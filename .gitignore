@@ -127,3 +127,47 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# PyCharm
+.idea/
+
+## PyTorch
+
+*/*.pyc
+*/*.so*
+*/**/__pycache__
+*/**/*.dylib*
+*/**/*.pyc
+*/**/*.pyd
+*/**/*.so*
+*/**/**/*.pyc
+*/**/**/**/*.pyc
+*/**/**/**/**/*.pyc
+
+# Editor temporaries
+*.swa
+*.swb
+*.swc
+*.swd
+*.swe
+*.swf
+*.swg
+*.swh
+*.swi
+*.swj
+*.swk
+*.swl
+*.swm
+*.swn
+*.swo
+*.swp
+*~
+
+# macOS dir files
+.DS_Store
+
+# Virtualenv
+venv/
+
+# Log files
+*.log
