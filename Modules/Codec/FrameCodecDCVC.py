@@ -124,8 +124,8 @@ class FrameCodecDCVC(CompressionModel):
         gaussian_params = self.entropy_parameters(torch.cat([temporal_prior, hyperprior, auto_prior], dim=1))
         scales_hat, means_hat = gaussian_params.chunk(chunks=2, dim=1)
         _, latents_likelihoods = self.gaussian_conditional(latents, scales_hat, means=means_hat)
-        rec_frame = self.synthesis_transform(rec_latents, ctx=temporal_ctx)
+        rec_cur = self.synthesis_transform(rec_latents, ctx=temporal_ctx)
         return {
-            "rec_frame": rec_frame,
+            "rec_cur": rec_cur,
             "likelihoods": {"latents": latents_likelihoods, "hyperprior": hyperprior_likelihoods},
         }

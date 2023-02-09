@@ -1,6 +1,6 @@
-from .PreTransform import PreTransformABC, IdentityTransform
+from .PreTransform import PreTransformABC, IdentityPreTransform
 
 __all__ = [
     'PreTransformABC',
-    'IdentityTransform'
+    'IdentityPreTransform'
 ]

@@ -1,6 +1,6 @@
-from .PostTransform import PostTransformABC, IdentityTransform
+from .PostTransform import PostTransformABC, IdentityPostTransform
 
 __all__ = [
     'PostTransformABC',
-    'IdentityTransform'
+    'IdentityPostTransform'
 ]
