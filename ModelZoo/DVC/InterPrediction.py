@@ -19,7 +19,7 @@ class RefineNet(nn.Module):
             nn.Conv2d(in_channels=64, out_channels=3, kernel_size=3, stride=1, padding=1)
         )
 
-    def forward(self, aligned_ref: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    def forward(self, aligned_ref: torch.Tensor, **kwargs) -> torch.Tensor:
         assert "offset" in kwargs.keys() and "ref" in kwargs.keys()
         feats = self.head(torch.cat([kwargs["offset"], kwargs["ref"], aligned_ref], dim=1))
         feats_list = []
