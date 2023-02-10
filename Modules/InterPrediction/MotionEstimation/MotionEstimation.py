@@ -1,11 +1,25 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.nn import functional as F
 
 from Modules.Utils import optical_flow_warp
 
 
-class BasicBlock(nn.Module):
+class DeformableOffsetEst(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
+        )
+
+    def forward(self, cur: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
+        offset = self.net(torch.cat([cur, ref], dim=1))
+        return offset
+
+
+class SpyNetBasicBlock(nn.Module):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
@@ -24,17 +38,17 @@ class BasicBlock(nn.Module):
         return self.net(x)
 
 
-class MotionEstDVC(nn.Module):
+class SpyNetOpticalFlowEst(nn.Module):
     def __init__(self):
         super().__init__()
         self.scale_levels = 4
-        self.net = nn.ModuleList([BasicBlock() for _ in range(self.scale_levels)])
+        self.net = nn.ModuleList([SpyNetBasicBlock() for _ in range(self.scale_levels)])
         self.load_pretrained_model()
 
-    def forward(self, cur_frame: torch.Tensor, ref_frame: torch.Tensor) -> torch.Tensor:
+    def forward(self, cur_frame: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
         B, _, _, _ = cur_frame.shape
         multiscale_cur_frame = [cur_frame.clone(), ]
-        multiscale_ref_frame = [ref_frame.clone(), ]
+        multiscale_ref_frame = [ref.clone(), ]
         for level in range(1, self.scale_levels):
             multiscale_cur_frame.append(F.avg_pool2d(multiscale_cur_frame[level - 1], kernel_size=2, stride=2))
             multiscale_ref_frame.append(F.avg_pool2d(multiscale_ref_frame[level - 1], kernel_size=2, stride=2))

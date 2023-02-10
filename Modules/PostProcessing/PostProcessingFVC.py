@@ -33,12 +33,8 @@ class MultiFrameFeatsFusionBlock(nn.Module):
 
     def forward(self, cur: torch.Tensor, **kwargs) -> torch.Tensor:
         if "ref" in kwargs.keys():
-            print("POST PROCESSING")
-            print(kwargs["ref"].shape)
             offset = self.motion_est(cur, ref=kwargs["ref"])
-            print(offset.shape)
-
-            aligned_ref = self.motion_comp(offset, ref=kwargs["ref"])
+            aligned_ref = self.motion_comp(ref=kwargs["ref"], offset=offset)
             refined_cur = self.non_local(cur, ref=aligned_ref)
         else:
             refined_cur = self.non_local(cur, ref=cur)

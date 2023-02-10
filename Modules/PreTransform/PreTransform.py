@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from abc import ABCMeta
 
-from Modules.Utils import EncUnitFVC
+from Modules.Utils import EncUnit
 
 
 class PreTransformABC(nn.Module, metaclass=ABCMeta):
@@ -24,4 +24,4 @@ class IdentityPreTransform(PreTransformABC):
 class FeaturePreTransformFVC(PreTransformABC):
     def __init__(self):
         super().__init__()
-        self.pre_transform = EncUnitFVC(in_channels=3, out_channels=64)
+        self.pre_transform = EncUnit(in_channels=3, out_channels=64)

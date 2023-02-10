@@ -3,10 +3,9 @@ import torch.nn as nn
 
 from Modules.PreTransform.PreTransform import FeaturePreTransformFVC
 from Modules.PostTransform.PostTransform import FeaturePostTransformFVC
-from Modules.InterPrediction.MotionEstimation.MotionEstFVC import MotionEstFVC
-from Modules.InterPrediction.MotionCompensation.MotionCompFVC import MotionCompFVC
-from Modules.Codec.FrameCodecFVC import FrameCodecFVC
-from Modules.Codec.MotionCodecFVC import MotionCodecFVC
+from ModelZoo.FVC.InterPrediction import MotionCompensation, MotionEstimation
+from ModelZoo.FVC.FrameCompression import FrameCompression
+from ModelZoo.FVC.MotionCompression import MotionCompression
 from Modules.PostProcessing.PostProcessingFVC import MultiFrameFeatsFusionFVC
 
 
@@ -40,10 +39,10 @@ class InterFrameCodecFVC(nn.Module):
     def __init__(self, decoded_buffer: DecodedBuffer):
         super().__init__()
         self.pre_transform = FeaturePreTransformFVC()
-        self.motion_est = MotionEstFVC()
-        self.motion_comp = MotionCompFVC()
-        self.frame_codec = FrameCodecFVC()
-        self.motion_codec = MotionCodecFVC()
+        self.motion_est = MotionEstimation()
+        self.motion_comp = MotionCompensation()
+        self.frame_codec = FrameCompression()
+        self.motion_codec = MotionCompression()
         self.post_transform = FeaturePostTransformFVC()
         self.post_processing = MultiFrameFeatsFusionFVC(motion_est=self.motion_est, motion_comp=self.motion_comp)
         self.decoded_buffer = decoded_buffer
@@ -55,19 +54,30 @@ class InterFrameCodecFVC(nn.Module):
 
         offset = self.motion_est(cur_feats, ref=ref_feats)
         offset_encode_results = self.motion_codec(offset)
-        pred = self.motion_comp(offset_encode_results["rec_offset"], ref=ref_feats)
+        rec_offset = offset_encode_results["inputs_hat"]
+        pred = self.motion_comp(ref_feats, offset=rec_offset)
         frame_encode_results = self.frame_codec(cur_feats, pred=pred)
 
         if len(self.decoded_buffer) >= 3:
-            rec_feats = self.post_processing(frame_encode_results["rec_cur"], ref_list=self.decoded_buffer.get_feats(num_feats=3))
+            rec_feats = self.post_processing(frame_encode_results["inputs_hat"], ref_list=self.decoded_buffer.get_feats(num_feats=3))
         else:
-            rec_feats = frame_encode_results["rec_cur"]
+            rec_feats = frame_encode_results["inputs_hat"]
         rec_frame = self.post_transform(rec_feats)
 
         self.decoded_buffer.update(rec_frame, feats=rec_feats)
 
         return {
-            "rec_offset": offset_encode_results["rec_offset"],
+            "rec_offset": rec_offset,
             "rec_frame": rec_frame,
             "likelihoods": {"offset": offset_encode_results["likelihoods"], "frame": frame_encode_results["likelihoods"]}
         }
+
+
+if __name__ == "__main__":
+    d = DecodedBuffer()
+    d.update(torch.randn(1, 3, 128, 128), feats=torch.randn(1, 64, 64, 64))
+    d.update(torch.randn(1, 3, 128, 128), feats=torch.randn(1, 64, 64, 64))
+    d.update(torch.randn(1, 3, 128, 128), feats=torch.randn(1, 64, 64, 64))
+    a = InterFrameCodecFVC(d)
+    a(torch.randn(1, 3, 128, 128))
+
