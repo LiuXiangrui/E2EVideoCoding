@@ -2,7 +2,7 @@
 
 # DVC
 - 参考![PytorchCompression](https://github.com/ZhihaoHu/PyTorchVideoCompression/tree/master/DVC)实现
-- 发现PytorchCompression的实现与DVC原文差别
+- 发现PytorchCompression的实现与DVC原文差别，在我们的实现中根据DVC原文进行相应修改
   - MV的编码器使用ReLU而非GDN
   - MC网络没有将光流作为输入
   - 残差编码器通道数设置与DVC不同(DVC采用Balle Hyperprior的通道数设置)
