@@ -165,9 +165,3 @@ dmypy.json
 
 # macOS dir files
 .DS_Store
-
-# Virtualenv
-venv/
-
-# Log files
-*.log
