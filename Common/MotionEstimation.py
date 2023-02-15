@@ -66,4 +66,4 @@ class SpyNetOpticalFlowEst(nn.Module):
     def fix_parameters(self):
         for p in self.parameters():
             p.requires_grad = False
-            self.eval()
+        self.eval()

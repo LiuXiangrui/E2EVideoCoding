@@ -26,15 +26,19 @@ def parse_args():
     parser.add_argument("--lambda_weight", type=float, help="weights for rd cost")
     parser.add_argument("--gpu", action='store_true', default=False, help="use gpu or cpu")
 
-    parser.add_argument("--lr_milestone", type=list, default=[1e-4, 1e-4, 1e-5], help="learning rate for per stage")
+    parser.add_argument("--batch_size", type=int, default=4, help="batch size")
+
+    parser.add_argument("--intra_quality", type=int, default=3, help="quality factor of I frame codec")
 
     parser.add_argument("--dataset_root", type=str, help="training h5 file")
-    parser.add_argument("--batch_size", type=int, help="batch size for Fusion stage")
 
     parser.add_argument("--checkpoints", type=str, help="checkpoints path")
     parser.add_argument("--pretrained", type=str, help="pretrained model path")
 
-    parser.add_argument("--epoch_milestone", type=list, default=[10, 20, 100, 50], help="training epochs per stage")
+    parser.add_argument("--epoch_milestone", type=list, default=[500, ], help="training epochs per stage")
+    parser.add_argument("--lr_milestone", type=list, default=[1e-4, ], help="learning rate for per stage")
+    parser.add_argument("--lr_decay_milestone", type=list, default=[100, 200, 300], help="learning rate decay milestone")
+    parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="learning rate decay factor")
 
     parser.add_argument("--eval_epochs", type=int, default=1, help="interval of epochs for evaluation")
     parser.add_argument("--save_epochs", type=int, default=5, help="interval of epochs for model saving")
@@ -144,6 +148,7 @@ def calculate_bpp(likelihoods: torch.Tensor | dict, num_pixels: int) -> torch.Te
         bpp = torch.zeros(1)
         for k, v in likelihoods.items():
             assert isinstance(v, torch.Tensor)
+            bpp = bpp.to(v.device)
             bpp += torch.log(v).sum() / (-math.log(2) * num_pixels)
         return bpp
 
@@ -153,16 +158,20 @@ def cal_psnr(distortion: torch.Tensor):
     return psnr
 
 
-def get_normal_params(net: nn.Module):
+def separate_aux_normal_params(net: nn.Module):
     parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
     aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
+    fixed_parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and not p.requires_grad)
+
     params_dict = dict(net.named_parameters())
     inter_params = parameters & aux_parameters
-    union_params = parameters | aux_parameters
+    union_params = parameters | aux_parameters | fixed_parameters
     assert len(inter_params) == 0
     assert len(union_params) - len(params_dict.keys()) == 0
     params = (params_dict[n] for n in sorted(list(parameters)))
-    return params
+    aux_params = (params_dict[n] for n in sorted(list(aux_parameters)))
+
+    return params, aux_params
 
 
 def optical_flow_warp(x: torch.Tensor, motion_fields: torch.Tensor) -> torch.Tensor:
