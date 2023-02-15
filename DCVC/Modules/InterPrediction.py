@@ -25,8 +25,8 @@ class MotionRefine(nn.Module):
             nn.Conv2d(in_channels=64, out_channels=2, kernel_size=3, stride=1, padding=1),
         )
 
-    def forward(self, offset: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
-        return self.net(torch.cat([offset, ref], dim=1))
+    def forward(self, motion_fields: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([motion_fields, ref], dim=1)) + motion_fields
 
 
 class RefRefine(nn.Module):

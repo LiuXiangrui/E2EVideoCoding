@@ -1,33 +1,35 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from torch.utils.data.dataloader import DataLoader
-import itertools
 from tqdm import tqdm
-from torchvision.transforms import RandomCrop
-from compressai.zoo import cheng2020_attn as IntraFrameCodec
+from torch.optim.lr_scheduler import MultiStepLR
 
-from DCVC.DCVC import InterFrameCodecDCVC
-from Common.Dataset import Vimeo90KDataset
-from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, get_normal_params, Record, init
+from DCVC import InterFrameCodecDCVC
+from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_normal_params
 
 from Common.Trainer import Trainer
 
 
 class TrainerDCVC(Trainer):
-    def __init__(self):
-        super().__init__(inter_frame_codec=InterFrameCodecDCVC)
+    def __init__(self, inter_frame_codec: nn.Module):
+        super().__init__(inter_frame_codec=inter_frame_codec)
 
-    def init_optimizer(self):
+    def init_optimizer(self) -> tuple:
         lr_milestone = self.args.lr_milestone
         assert len(lr_milestone) == 1
-        optimizer = Adam([{'params': get_normal_params(self.inter_frame_codec), 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
-        return optimizer
+        params, aux_params = separate_aux_normal_params(self.inter_frame_codec)
 
-    def encode(self, frames: torch.Tensor):
+        optimizer = Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
+        aux_optimizer = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
+
+        return [optimizer, ], [aux_optimizer, ]
+
+    def encode_sequence(self, frames: torch.Tensor) -> dict:
         decode_buffer = DecodedBuffer()
 
         num_available_frames = 2
+
+        # I frame coding
         intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
@@ -42,19 +44,13 @@ class TrainerDCVC(Trainer):
         inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in
                         range(1, num_available_frames)]
 
-        rd_cost_avg = torch.zeros(0)
-        pred_psnr_avg_inter = torch.zeros(0)
-        recon_psnr_avg_inter = torch.zeros(0)
-        motion_bpp_avg = torch.zeros(0)
-        residues_bpp_avg = torch.zeros(0)
+        rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = residues_bpp_avg = 0
 
         for frame in inter_frames:
             ref = decode_buffer.get_frames(num_frames=1)
-            pred, motion_likelihoods = self.inter_frame_codec.inter_predict(frame, ref=ref)
-            frame_hat, residues_likelihoods = self.inter_frame_codec.residues_compression(frame, pred=pred)
 
-            pred_dist = self.distortion_metric(pred, frame)
-            pred_psnr = cal_psnr(pred_dist)
+            pred, motion_likelihoods = self.inter_frame_codec.inter_predict(frame, ref=ref)
+            frame_hat, residues_likelihoods = self.inter_frame_codec.frame_compress(frame, pred=pred)
 
             recon_dist = self.distortion_metric(frame_hat, frame)
             recon_psnr = cal_psnr(recon_dist)
@@ -63,18 +59,18 @@ class TrainerDCVC(Trainer):
             residues_bpp = calculate_bpp(residues_likelihoods, num_pixels=num_pixels)
 
             rd_cost = self.args.lambda_weight * recon_dist + residues_bpp + motion_bpp
+            aux_loss = self.inter_frame_codec.aux_loss()
 
             rd_cost_avg += rd_cost
+            aux_loss_avg += aux_loss
             recon_psnr_avg_inter += recon_psnr
             residues_bpp_avg += residues_bpp
-            pred_psnr_avg_inter += pred_psnr
             motion_bpp_avg += motion_bpp
 
             decode_buffer.update(frame_hat)
 
         rd_cost_avg = rd_cost_avg / len(frames)
-
-        pred_psnr_avg_inter = pred_psnr_avg_inter / len(frames)
+        aux_loss_avg = aux_loss_avg / len(frames)
 
         recon_psnr_avg = (recon_psnr_avg_inter + intra_psnr) / (len(frames) + 1)
         recon_psnr_avg_inter = recon_psnr_avg_inter / len(frames)
@@ -89,57 +85,55 @@ class TrainerDCVC(Trainer):
 
         return {
             "rd_cost_avg": rd_cost_avg,
-            "pred_psnr_avg_inter": pred_psnr_avg_inter,
+            "aux_loss_avg": aux_loss_avg,
             "recon_psnr_avg_inter": recon_psnr_avg_inter, "recon_psnr_avg": recon_psnr_avg,
             "motion_bpp_avg": motion_bpp_avg, "residues_bpp_avg": residues_bpp_avg,
             "total_bpp_avg_inter": total_bpp_avg_inter, "total_bpp_avg": total_bpp_avg,
-            "prediction": pred,
-            "reconstruction": frame_hat
+            "reconstruction": decode_buffer.get_frames(len(decode_buffer)),
+            "pristine": frames
         }
 
-    def train_one_epoch(self, stage: str):
+    def train_one_epoch(self):
         self.inter_frame_codec.train()
-        for frames in tqdm(self.train_dataloader, total=len(self.train_dataloader), smoothing=0.9, ncols=50):
-            encode_results = self.encode(frames, stage=stage)
+        for sequence in tqdm(self.train_dataloader, total=len(self.train_dataloader), smoothing=0.9, ncols=50):
+            encode_results = self.encode_sequence(sequence)
 
-            if stage is "rolling":
-                optimizer = self.optimizers["total"]
-            else:
-                optimizer = self.optimizers[stage]
-
+            optimizer = self.optimizers[0]
             optimizer.zero_grad()
-            loss = torch.tensor(encode_results["rd_cost_avg"])
+            loss = encode_results["rd_cost_avg"]
             loss.backward()
             nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
             optimizer.step()
 
+            aux_optimizer = self.aux_optimizers[0]
+            aux_optimizer.zero_grad()
+            loss = encode_results["aux_loss_avg"]
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
+            aux_optimizer.step()
+
             self.train_steps += 1
             self.tensorboard.add_scalars(main_tag="Training/PSNR", global_step=self.train_steps,
-                                         tag_scalar_dict={"Prediction": encode_results["pred_psnr_avg_inter"],
-                                                          "Reconstruction": encode_results["recon_psnr_avg_inter"]})
+                                         tag_scalar_dict={"Reconstruction": encode_results["recon_psnr_avg_inter"]})
             self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                          tag_scalar_dict={"Motion Info": encode_results["motion_bpp_avg"],
                                                           "Residues": encode_results["residues_bpp_avg"]})
             if self.train_steps % 100 == 0:
-                self.tensorboard.add_image(tag="Training/Prediction", global_step=self.train_steps,
-                                           img_tensor=encode_results["prediction"][0].clone().detach().cpu())
-                self.tensorboard.add_image(tag="Training/Reconstruction", global_step=self.train_steps,
-                                           img_tensor=encode_results["reconstruction"][0].clone().detach().cpu())
+                self.tensorboard.add_images(tag="Training/Reconstruction", global_step=self.train_steps,
+                                            img_tensor=torch.stack(encode_results["reconstruction"], dim=1)[0].clone().detach().cpu())
+                self.tensorboard.add_images(tag="Training/Pristine", global_step=self.train_steps,
+                                            img_tensor=torch.stack(encode_results["pristine"], dim=1)[0].clone().detach().cpu())
 
     def load_checkpoints(self):
-        print("\n===========Load checkpoints {0}===========\n".format(self.args.checkpoints))
-        ckpt = torch.load(self.args.checkpoints, map_location="cuda" if self.args.gpu else "cpu")
         start_epoch = 0
         best_rd_cost = 1e9
-        stage = "inter_prediction"
         if self.args.checkpoints:
+            print("\n===========Load checkpoints {0}===========\n".format(self.args.checkpoints))
+            ckpt = torch.load(self.args.checkpoints, map_location="cuda" if self.args.gpu else "cpu")
             self.inter_frame_codec.load_state_dict(ckpt["inter_frame_codec"])
             try:
-                stage = ckpt["stage"]
-            except:
-                print("Can not find stage indicator, just set to the first stage 'inter_prediction'.")
-            try:
-                self.optimizers[stage].load_state_dict(ckpt["optimizer"])
+                self.optimizers[0].load_state_dict(ckpt["optimizer"])
+                self.aux_optimizers[0].load_state_dict(ckpt["aux_optimizer"])
             except:
                 print("Can not find some optimizers params, just ignore")
             try:
@@ -166,35 +160,30 @@ class TrainerDCVC(Trainer):
 
     def train(self):
         start_epoch, best_rd_cost = self.load_checkpoints()
-        # TODO: scheduler, aux_scheduler = self.init_scheduler(start_epoch=start_epoch)
+        scheduler = MultiStepLR(optimizer=self.optimizers[0], milestones=self.args.lr_decay_milestone, gamma=self.args.lr_decay_factor, last_epoch=start_epoch - 1)
+        aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[0], milestones=self.args.lr_decay_milestone, gamma=self.args.lr_decay_factor, last_epoch=start_epoch - 1)
+
         epoch_milestone = self.args.epoch_milestone
+        assert len(epoch_milestone) == 1
         max_epochs = sum(epoch_milestone)
         for epoch in range(start_epoch, max_epochs):
-            if epoch < epoch_milestone[:1]:
-                stage = "inter_prediction"
-            elif epoch < sum(epoch_milestone[:2]):
-                stage = "residues_compression"
-            elif epoch < sum(epoch_milestone[:3]):
-                stage = "total"
-            else:
-                stage = "rolling"
+            print("\nEpoch {0}".format(str(epoch)))
+            self.train_one_epoch()
+            scheduler.step()
+            aux_scheduler.step()
 
-            print("\nEpoch {0}, stage is '{1}}'".format(str(epoch), stage))
-            self.train_one_epoch(stage=stage)
-            # TODO: scheduler.step()
-
-            if stage is not "inter_prediction" and epoch % self.args.eval_epochs_interval == 0:
+            if epoch % self.args.eval_epochs == 0:
                 rd_cost = self.evaluate()
                 if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
                     best_rd_cost = min(best_rd_cost, rd_cost)
-                    self.save_ckpt(epoch=epoch, stage=stage, best_rd_cost=best_rd_cost)
+                    self.save_ckpt(epoch=epoch, best_rd_cost=best_rd_cost)
 
     @torch.no_grad()
-    def evaluate(self, stage) -> float:
+    def evaluate(self) -> float:
         self.inter_frame_codec.eval()
         for frames in tqdm(self.eval_dataloader, total=len(self.eval_dataloader), smoothing=0.9, ncols=50):
-            encode_results = self.encode(frames, stage=stage)
-            self.record.update('rd_cost', encode_results["rd_cost_avg_inter"].item())
+            encode_results = self.encode_sequence(frames)
+            self.record.update('rd_cost', encode_results["rd_cost_avg"].item())
             self.record.update('recon_psnr', encode_results["recon_psnr_avg"].item())
             self.record.update('recon_psnr_inter', encode_results["recon_psnr_avg_inter"].item())
             self.record.update('motion_bpp', encode_results["motion_bpp_avg"].item())
@@ -206,39 +195,19 @@ class TrainerDCVC(Trainer):
         self.logger.info(info)
         return rd_cost
 
-    def save_ckpt(self, stage: str, epoch: int, best_rd_cost: torch.Tensor):
+    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor):
         ckpt = {
             "inter_frame_codec": self.inter_frame_codec.state_dict(),
-            "optimizer": self.optimizers[stage].state_dict(),
+            "optimizer": self.optimizers[0].state_dict(),
+            "aux_optimizer": self.aux_optimizers[0].state_dict(),
             "epoch": epoch,
-            "stage": stage,
             "best_rd_cost": best_rd_cost
         }
-        ckpt_path = "%s/codec_%.3d.pth" % (self.checkpoints_dir, epoch)
+        ckpt_path = "%s/DCVC_Inter_%.3d.pth" % (self.checkpoints_dir, epoch)
         torch.save(ckpt, ckpt_path)
         print("\nSave model to " + ckpt_path)
 
 
-def get_aux_params(net: nn.Module):
-
-    parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
-    aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
-
-    # make sure there are no intersection of parameters
-    params_dict = dict(net.named_parameters())
-    inter_params = parameters & aux_parameters
-    union_params = parameters | aux_parameters
-
-    assert len(inter_params) == 0
-    assert len(union_params) - len(params_dict.keys()) == 0
-
-    # aux_optimizer = Adam(params=(params_dict[n] for n in sorted(list(aux_parameters))), lr=lr)
-    params = (params_dict[n] for n in sorted(list(aux_parameters)))
-    for n in sorted(list(aux_parameters)):
-        print('aux_params = {}'.format(n))
-    return params
-
-
 if __name__ == "__main__":
-    trainer = Trainer()
+    trainer = TrainerDCVC(inter_frame_codec=InterFrameCodecDCVC)
     trainer.train()
