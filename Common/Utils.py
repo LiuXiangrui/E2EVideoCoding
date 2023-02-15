@@ -68,11 +68,14 @@ class CustomLogger:
 
 
 class Record:
-    def __init__(self, name: list, truncated_decimal: int = 4) -> None:
-        self.name = name
+    def __init__(self, item_list: list, truncated_decimal: int = 4) -> None:
+        self.item_list = item_list
         self.truncated_decimal = truncated_decimal
-        self.data = {n: [0, 0] for n in self.name}
-        self.disp = PrettyTable(field_names=name)
+        self.data = {n: [0, 0] for n in self.item_list}
+
+    def add_item(self, name: str):
+        self.item_list.append(name)
+        self.data[name] = [0, 0]
 
     def update(self, n: str, v: float) -> None:
         self.data[n][0] += v
@@ -82,13 +85,13 @@ class Record:
         return self.data[n][0] if average else self.data[n][0] / self.data[n][1]
 
     def clean(self) -> None:
-        for n in self.name:
+        for n in self.item_list:
             self.data[n] = [0, 0]
 
     def display(self) -> str:
-        self.disp.add_row([round(self.data[n][0] / self.data[n][1], ndigits=self.truncated_decimal) for n in self.name])
-        info = self.disp.get_string()
-        self.disp.clear_rows()
+        disp = PrettyTable(field_names=self.item_list)
+        disp.add_row([round(self.data[n][0] / self.data[n][1], ndigits=self.truncated_decimal) for n in self.item_list])
+        info = disp.get_string()
         self.clean()
         return info
 
@@ -158,7 +161,7 @@ def cal_psnr(distortion: torch.Tensor):
     return psnr
 
 
-def separate_aux_normal_params(net: nn.Module):
+def separate_aux_and_normal_params(net: nn.Module):
     parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
     aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
     fixed_parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and not p.requires_grad)

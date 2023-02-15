@@ -1,29 +1,22 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from tqdm import tqdm
 from torch.optim.lr_scheduler import MultiStepLR
-
-from DCVC import InterFrameCodecDCVC
-from Common.Utils import Record, DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_normal_params
+from tqdm import tqdm
 
 from Common.Trainer import Trainer
+from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
+from DCVC import InterFrameCodecDCVC
 
 
 class TrainerDCVC(Trainer):
     def __init__(self, inter_frame_codec: nn.Module):
         super().__init__(inter_frame_codec=inter_frame_codec)
-        self.record = Record(name=[
-            'rd_cost',
-            'recon_psnr', 'recon_psnr_inter',
-            'motion_bpp', 'frame',
-            'total_bpp', 'total_bpp_inter'
-        ])
 
     def init_optimizer(self) -> tuple:
         lr_milestone = self.args.lr_milestone
         assert len(lr_milestone) == 1
-        params, aux_params = separate_aux_normal_params(self.inter_frame_codec)
+        params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
 
         optimizer = Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
         aux_optimizer = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
@@ -50,12 +43,13 @@ class TrainerDCVC(Trainer):
         inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in
                         range(1, num_available_frames)]
 
-        rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0
+        rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
 
+        # P frame coding
         for frame in inter_frames:
             ref = decode_buffer.get_frames(num_frames=1)
 
-            frame_hat, pred, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
+            frame_hat, _, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
 
             recon_dist = self.distortion_metric(frame_hat, frame)
             recon_psnr = cal_psnr(recon_dist)
@@ -66,37 +60,28 @@ class TrainerDCVC(Trainer):
             rd_cost = self.args.lambda_weight * recon_dist + frame_bpp + motion_bpp
             aux_loss = self.inter_frame_codec.aux_loss()
 
-            rd_cost_avg += rd_cost
-            aux_loss_avg += aux_loss
-            recon_psnr_avg_inter += recon_psnr
-            frame_bpp_avg += frame_bpp
-            motion_bpp_avg += motion_bpp
+            rd_cost_avg += rd_cost / len(inter_frames)
+            aux_loss_avg += aux_loss / len(inter_frames)
+            recon_psnr_avg_inter += recon_psnr / len(inter_frames)
+            frame_bpp_avg += frame_bpp / len(inter_frames)
+            motion_bpp_avg += motion_bpp / len(inter_frames)
 
             decode_buffer.update(frame_hat)
 
-        rd_cost_avg = rd_cost_avg / len(frames)
-        aux_loss_avg = aux_loss_avg / len(frames)
-
-        recon_psnr_avg = (recon_psnr_avg_inter + intra_psnr) / (len(frames) + 1)
-        recon_psnr_avg_inter = recon_psnr_avg_inter / len(frames)
+        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / (len(frames))
 
         total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
-        total_bpp_avg = (total_bpp_avg_inter + intra_bpp) / (len(frames) + 1)
-        total_bpp_avg_inter = total_bpp_avg_inter / len(frames)
-
-        motion_bpp_avg = motion_bpp_avg / len(frames)
-
-        frame_bpp_avg = frame_bpp_avg / len(frames)
+        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / (len(frames) + 1)
 
         return {
-            "rd_cost_avg": rd_cost_avg,
-            "aux_loss_avg": aux_loss_avg,
-            "recon_psnr_avg_inter": recon_psnr_avg_inter, "recon_psnr_avg": recon_psnr_avg,
-            "motion_bpp_avg": motion_bpp_avg, "frame_bpp_avg": frame_bpp_avg,
-            "total_bpp_avg_inter": total_bpp_avg_inter, "total_bpp_avg": total_bpp_avg,
-            "reconstruction": decode_buffer.get_frames(len(decode_buffer)),
-            "pristine": frames
-        }
+                "rd_cost_avg": rd_cost_avg,
+                "aux_loss_avg": aux_loss_avg,
+                "recon_psnr_avg_inter": recon_psnr_avg_inter, "recon_psnr_avg": recon_psnr_avg,
+                "motion_bpp_avg": motion_bpp_avg, "frame_bpp_avg": frame_bpp_avg,
+                "total_bpp_avg_inter": total_bpp_avg_inter, "total_bpp_avg": total_bpp_avg,
+                "reconstruction": decode_buffer.get_frames(len(decode_buffer)),
+                "pristine": frames
+            }
 
     def train_one_epoch(self):
         self.inter_frame_codec.train()

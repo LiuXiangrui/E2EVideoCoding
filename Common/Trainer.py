@@ -12,10 +12,10 @@ from Common.Utils import Record, init
 class Trainer(metaclass=ABCMeta):
     def __init__(self, inter_frame_codec: nn.Module):
         self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(name=[
+        self.record = Record(item_list=[
             'rd_cost',
             'recon_psnr', 'recon_psnr_inter',
-            'motion_bpp', 'residues_bpp',
+            'motion_bpp', 'frame_bpp',
             'total_bpp', 'total_bpp_inter'
         ])
 

@@ -9,13 +9,13 @@ from compressai.zoo import cheng2020_attn as IntraFrameCodec
 
 from FVC.FVC import InterFrameCodecFVC as InterFrameCodec
 from Common.Dataset import Vimeo90KDataset
-from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_normal_params, Record, init
+from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params, Record, init
 
 
 class Trainer:
     def __init__(self):
         self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(name=[
+        self.record = Record(item_list=[
             'rd_cost',
             'recon_psnr', 'recon_psnr_inter',
             'motion_bpp', 'residues_bpp',
@@ -40,15 +40,15 @@ class Trainer:
         lr_milestone = self.args.lr_milestone
         optimizers = {
             "inter_prediction": Adam(
-                [{'params': itertools.chain(separate_aux_normal_params(self.inter_frame_codec.motion_compression),
-                                            separate_aux_normal_params(self.inter_frame_codec.motion_comp)),
+                [{'params': itertools.chain(separate_aux_and_normal_params(self.inter_frame_codec.motion_compression),
+                                            separate_aux_and_normal_params(self.inter_frame_codec.motion_comp)),
                   'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
             "residues_compression": Adam(
-                [{'params': separate_aux_normal_params(self.inter_frame_codec.residues_compression),
+                [{'params': separate_aux_and_normal_params(self.inter_frame_codec.residues_compression),
                   'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
 
             "total": Adam(
-                [{'params': separate_aux_normal_params(self.inter_frame_codec),
+                [{'params': separate_aux_and_normal_params(self.inter_frame_codec),
                  'initial_lr': lr_milestone[2]}], lr=lr_milestone[2])
         }
         return optimizers
