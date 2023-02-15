@@ -33,6 +33,7 @@ class Trainer(metaclass=ABCMeta):
 
         self.train_steps = 0
 
+    @abstractmethod
     def init_optimizer(self):
         raise NotImplementedError
 
@@ -315,8 +316,3 @@ def get_aux_params(net: nn.Module):
     for n in sorted(list(aux_parameters)):
         print('aux_params = {}'.format(n))
     return params
-
-
-if __name__ == "__main__":
-    trainer = Trainer()
-    trainer.train()

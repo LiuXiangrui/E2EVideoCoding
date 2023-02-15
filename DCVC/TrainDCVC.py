@@ -5,7 +5,7 @@ from tqdm import tqdm
 from torch.optim.lr_scheduler import MultiStepLR
 
 from DCVC import InterFrameCodecDCVC
-from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_normal_params
+from Common.Utils import Record, DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_normal_params
 
 from Common.Trainer import Trainer
 
@@ -13,6 +13,12 @@ from Common.Trainer import Trainer
 class TrainerDCVC(Trainer):
     def __init__(self, inter_frame_codec: nn.Module):
         super().__init__(inter_frame_codec=inter_frame_codec)
+        self.record = Record(name=[
+            'rd_cost',
+            'recon_psnr', 'recon_psnr_inter',
+            'motion_bpp', 'frame',
+            'total_bpp', 'total_bpp_inter'
+        ])
 
     def init_optimizer(self) -> tuple:
         lr_milestone = self.args.lr_milestone
@@ -44,27 +50,26 @@ class TrainerDCVC(Trainer):
         inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in
                         range(1, num_available_frames)]
 
-        rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = residues_bpp_avg = 0
+        rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0
 
         for frame in inter_frames:
             ref = decode_buffer.get_frames(num_frames=1)
 
-            pred, motion_likelihoods = self.inter_frame_codec.inter_predict(frame, ref=ref)
-            frame_hat, residues_likelihoods = self.inter_frame_codec.frame_compress(frame, pred=pred)
+            frame_hat, pred, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
 
             recon_dist = self.distortion_metric(frame_hat, frame)
             recon_psnr = cal_psnr(recon_dist)
 
             motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
-            residues_bpp = calculate_bpp(residues_likelihoods, num_pixels=num_pixels)
+            frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
 
-            rd_cost = self.args.lambda_weight * recon_dist + residues_bpp + motion_bpp
+            rd_cost = self.args.lambda_weight * recon_dist + frame_bpp + motion_bpp
             aux_loss = self.inter_frame_codec.aux_loss()
 
             rd_cost_avg += rd_cost
             aux_loss_avg += aux_loss
             recon_psnr_avg_inter += recon_psnr
-            residues_bpp_avg += residues_bpp
+            frame_bpp_avg += frame_bpp
             motion_bpp_avg += motion_bpp
 
             decode_buffer.update(frame_hat)
@@ -75,19 +80,19 @@ class TrainerDCVC(Trainer):
         recon_psnr_avg = (recon_psnr_avg_inter + intra_psnr) / (len(frames) + 1)
         recon_psnr_avg_inter = recon_psnr_avg_inter / len(frames)
 
-        total_bpp_avg_inter = motion_bpp_avg + residues_bpp_avg
+        total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
         total_bpp_avg = (total_bpp_avg_inter + intra_bpp) / (len(frames) + 1)
         total_bpp_avg_inter = total_bpp_avg_inter / len(frames)
 
         motion_bpp_avg = motion_bpp_avg / len(frames)
 
-        residues_bpp_avg = residues_bpp_avg / len(frames)
+        frame_bpp_avg = frame_bpp_avg / len(frames)
 
         return {
             "rd_cost_avg": rd_cost_avg,
             "aux_loss_avg": aux_loss_avg,
             "recon_psnr_avg_inter": recon_psnr_avg_inter, "recon_psnr_avg": recon_psnr_avg,
-            "motion_bpp_avg": motion_bpp_avg, "residues_bpp_avg": residues_bpp_avg,
+            "motion_bpp_avg": motion_bpp_avg, "frame_bpp_avg": frame_bpp_avg,
             "total_bpp_avg_inter": total_bpp_avg_inter, "total_bpp_avg": total_bpp_avg,
             "reconstruction": decode_buffer.get_frames(len(decode_buffer)),
             "pristine": frames
@@ -117,7 +122,7 @@ class TrainerDCVC(Trainer):
                                          tag_scalar_dict={"Reconstruction": encode_results["recon_psnr_avg_inter"]})
             self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                          tag_scalar_dict={"Motion Info": encode_results["motion_bpp_avg"],
-                                                          "Residues": encode_results["residues_bpp_avg"]})
+                                                          "Frame": encode_results["frame_bpp_avg"]})
             if self.train_steps % 100 == 0:
                 self.tensorboard.add_images(tag="Training/Reconstruction", global_step=self.train_steps,
                                             img_tensor=torch.stack(encode_results["reconstruction"], dim=1)[0].clone().detach().cpu())
@@ -183,14 +188,14 @@ class TrainerDCVC(Trainer):
         self.inter_frame_codec.eval()
         for frames in tqdm(self.eval_dataloader, total=len(self.eval_dataloader), smoothing=0.9, ncols=50):
             encode_results = self.encode_sequence(frames)
-            self.record.update('rd_cost', encode_results["rd_cost_avg"].item())
-            self.record.update('recon_psnr', encode_results["recon_psnr_avg"].item())
-            self.record.update('recon_psnr_inter', encode_results["recon_psnr_avg_inter"].item())
-            self.record.update('motion_bpp', encode_results["motion_bpp_avg"].item())
-            self.record.update('residues_bpp', encode_results["residues_bpp_avg"].item())
-            self.record.update('total_bpp', encode_results["total_bpp_avg"].item())
-            self.record.update('total_bpp_inter', encode_results["total_bpp_avg_inter"].item())
-        rd_cost = self.record.get('rd_cost', average=True)
+            self.record.update("rd_cost", encode_results["rd_cost_avg"].item())
+            self.record.update("recon_psnr", encode_results["recon_psnr_avg"].item())
+            self.record.update("recon_psnr_inter", encode_results["recon_psnr_avg_inter"].item())
+            self.record.update("motion_bpp", encode_results["motion_bpp_avg"].item())
+            self.record.update("frame_bpp_avg", encode_results["frame_bpp_avg"].item())
+            self.record.update("total_bpp", encode_results["total_bpp_avg"].item())
+            self.record.update("total_bpp_inter", encode_results["total_bpp_avg_inter"].item())
+        rd_cost = self.record.get("rd_cost", average=True)
         info = self.record.display()
         self.logger.info(info)
         return rd_cost
