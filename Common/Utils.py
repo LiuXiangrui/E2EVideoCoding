@@ -73,6 +73,9 @@ class Record:
         self.truncated_decimal = truncated_decimal
         self.data = {n: [0, 0] for n in self.item_list}
 
+    def get_item_list(self) -> list:
+        return self.item_list
+
     def add_item(self, name: str):
         self.item_list.append(name)
         self.data[name] = [0, 0]
@@ -135,10 +138,11 @@ class DecodedBuffer:
         assert self.feats_buffer is not None and 1 <= num_feats <= len(self.feats_buffer)
         return self.feats_buffer[-num_feats:] if num_feats > 1 else self.feats_buffer[-1]
 
-    def update(self, frame: torch.Tensor, **kwargs):
+    def update(self, frame: torch.Tensor, feats: torch.Tensor = None):
+        assert self.feats_buffer and feats
         self.frame_buffer.append(frame)
-        if self.feats_buffer is not None and "feats" in kwargs.keys():
-            self.feats_buffer.append(kwargs["feats"])
+        if feats is not None:
+            self.feats_buffer.append(feats)
 
     def __len__(self):
         return len(self.frame_buffer)

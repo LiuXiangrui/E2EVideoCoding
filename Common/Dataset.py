@@ -7,10 +7,10 @@ from torchvision.transforms import ToTensor
 
 
 class Vimeo90KDataset(Dataset):
-    def __init__(self, root: str, list_filename: str, seq_folder: str = "sequences", transform=None):
+    def __init__(self, num_available_frames: int, root: str, list_filename: str, seq_folder: str = "sequences", transform=None):
         self.to_tensor = ToTensor()
         self.transform = transform
-        self.frames_per_seq = 7
+        self.num_available_frames = num_available_frames
 
         with open(os.path.join(root, list_filename), mode='r') as f:
             seq_list = f.readlines()
@@ -19,7 +19,7 @@ class Vimeo90KDataset(Dataset):
         self.seq_list = seq_list
 
     def __getitem__(self, index) -> torch.Tensor:
-        frames_path = [os.path.join(self.seq_list[index], "im{0}.png".format(str(i))) for i in range(1, self.frames_per_seq + 1)]
+        frames_path = [os.path.join(self.seq_list[index], "im{0}.png".format(str(i))) for i in range(1, self.num_available_frames + 1)]
 
         frames = torch.stack([self.to_tensor(Image.open(frame).convert("RGB"))[:, :512, :512] for frame in frames_path], dim=0)
 

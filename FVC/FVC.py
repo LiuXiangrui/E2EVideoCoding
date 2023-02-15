@@ -19,7 +19,7 @@ class InterFrameCodecFVC(nn.Module):
         self.frame_reconstruction = DecUnit(in_channels=64, out_channels=3)
         self.post_processing = MultiFrameFeatsFusion(motion_est=self.motion_est, motion_comp=self.motion_comp)
 
-    def forward(self, frame: torch.Tensor, ref: torch.Tensor, post_processing: bool = False, ref_feats_list: list = None) -> tuple:
+    def forward(self, frame: torch.Tensor, ref: torch.Tensor, ref_feats_list: list = None) -> tuple:
         feats = self.feats_extraction(frame)
         ref = self.feats_extraction(ref)
 
@@ -35,13 +35,50 @@ class InterFrameCodecFVC(nn.Module):
         residues_likelihoods = enc_results["likelihoods"]
         feats_hat = pred + residues_hat
 
-        if post_processing:
+        if ref_feats_list is not None:
+            assert len(ref_feats_list) == 3
             feats_hat = self.post_processing(feats, ref_feats_list=ref_feats_list)
 
         frame_hat = self.frame_reconstruction(feats_hat)
         frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
 
-        return frame_hat, residues_likelihoods, motion_likelihoods
+        return frame_hat, feats_hat, residues_likelihoods, motion_likelihoods
+
+    @torch.no_grad()
+    def encode(self, frame: torch.Tensor, ref: torch.Tensor) -> tuple:
+        feats = self.feats_extraction(frame)
+        ref = self.feats_extraction(ref)
+
+        motion_fields = self.motion_est(feats, ref=ref)
+
+        enc_results = self.motion_compression.compress(motion_fields)
+        motion_strings = enc_results["strings"]
+        motion_hyper_shape = enc_results["shape"]
+        motion_fields_hat = self.motion_compression.decompress(strings=motion_strings, shape=motion_hyper_shape)["x_hat"]
+
+        pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
+
+        enc_results = self.residues_compression.compress(feats - pred)
+        frame_strings = enc_results["strings"]
+        frame_hyper_shape = enc_results["shape"]
+
+        return motion_strings, motion_hyper_shape, frame_strings, frame_hyper_shape
+
+    @torch.no_grad()
+    def decode(self, ref: torch.Tensor, motion_strings: list, motion_hyper_shape: list, frame_strings: list, frame_hyper_shape: list, ref_feats_list: list) -> torch.Tensor:
+        assert len(ref_feats_list) == 3
+
+        motion_fields_hat = self.motion_compression.decompress(strings=motion_strings, shape=motion_hyper_shape)["x_hat"]
+
+        pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
+
+        residues_hat = self.residues_compression.decompress(strings=frame_strings, shape=frame_hyper_shape)["x_hat"]
+
+        feats_hat = self.post_processing(pred + residues_hat, ref_feats_list=ref_feats_list)
+        frame_hat = self.frame_reconstruction(feats_hat)
+        frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
+
+        return frame_hat
 
 
 if __name__ == "__main__":

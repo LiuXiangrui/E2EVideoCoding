@@ -10,31 +10,102 @@ from compressai.zoo import cheng2020_attn as IntraFrameCodec
 from FVC.FVC import InterFrameCodecFVC as InterFrameCodec
 from Common.Dataset import Vimeo90KDataset
 from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params, Record, init
+from Common.Trainer import Trainer
+
+class TrainerFVC(Trainer):
+    def __init__(self, inter_frame_codec: nn.Module, num_available_frames: int = 2) -> None:
+        super().__init__(inter_frame_codec=inter_frame_codec, num_available_frames=num_available_frames)
+
+    def train(self):
+        start_epoch, best_rd_cost = self.load_checkpoints()
+
+        epoch_milestone = self.args.epoch_milestone
+        max_epochs = sum(epoch_milestone)
+        for epoch in range(start_epoch, max_epochs):
+            if epoch < epoch_milestone[:1]:
+                stage = "w.o. fusion"
+            elif epoch < sum(epoch_milestone[:2]):
+                stage = "with fusion"
+            else:
+                stage = "fine-tune"
+
+            print("\nEpoch {0}, stage is '{1}}'".format(str(epoch), stage))
+            self.train_one_epoch(stage=stage)
+
+            if epoch % self.args.eval_epochs == 0:
+                rd_cost = self.evaluate(stage=stage)
+                if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
+                    best_rd_cost = min(best_rd_cost, rd_cost)
+                    self.save_ckpt(epoch=epoch, best_rd_cost=best_rd_cost, stage=stage)
 
 
-class Trainer:
-    def __init__(self):
-        self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(item_list=[
-            'rd_cost',
-            'recon_psnr', 'recon_psnr_inter',
-            'motion_bpp', 'residues_bpp',
-            'total_bpp', 'total_bpp_inter'
-        ])
 
-        self.inter_frame_codec = InterFrameCodec()
-        self.intra_frame_codec = IntraFrameCodec(quality=self.args.quality, metric="mse", pretrained=True)
-        self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
-        self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
-        self.intra_frame_codec.eval()
+    def encode_sequence(self, frames: torch.Tensor, *args, **kwargs) -> dict:
+        assert "stage" in kwargs.keys(), "need to specify the current stage"
 
-        self.optimizers = self.init_optimizer()
+        decode_buffer = DecodedBuffer()
 
-        self.train_dataloader, self.eval_dataloader = self.init_dataloader()
+        # I frame coding
+        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
+        num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
+        with torch.no_grad():
+            enc_results = self.intra_frame_codec(intra_frame)
+        intra_frame_hat = enc_results["x_hat"]
 
-        self.distortion_metric = nn.MSELoss()
 
-        self.train_steps = 0
+        #TODO: 用于融合的I 帧的feats怎么获得？
+        decode_buffer.update(intra_frame_hat)
+
+        intra_dist = self.distortion_metric(intra_frame_hat, intra_frame)
+        intra_psnr = cal_psnr(intra_dist)
+        intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
+
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, len(frames))]
+
+        rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
+
+        # P frame coding
+        for frame in inter_frames:
+            ref = decode_buffer.get_frames(num_frames=1)
+
+            if kwargs["stage"] == "w.o. fusion":
+                frame_hat, feats_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
+            else:
+                ref_feats_list = decode_buffer.get_feats(num_feats=3)
+                frame_hat, feats_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref, ref_feats_list=ref_feats_list)
+
+            recon_dist = self.distortion_metric(frame_hat, frame)
+            recon_psnr = cal_psnr(recon_dist)
+
+            motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
+            frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
+
+            rd_cost = self.args.lambda_weight * recon_dist + frame_bpp + motion_bpp
+            aux_loss = self.inter_frame_codec.aux_loss()
+
+            rd_cost_avg += rd_cost / len(inter_frames)
+            aux_loss_avg += aux_loss / len(inter_frames)
+            recon_psnr_avg_inter += recon_psnr / len(inter_frames)
+            frame_bpp_avg += frame_bpp / len(inter_frames)
+            motion_bpp_avg += motion_bpp / len(inter_frames)
+
+            decode_buffer.update(frame_hat, feats=feats_hat)
+
+        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / (len(frames))
+
+        total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
+        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / (len(frames) + 1)
+
+        return {
+            "rd_cost": rd_cost_avg,
+            "aux_loss": aux_loss_avg,
+            "recon_psnr_inter": recon_psnr_avg_inter, "recon_psnr": recon_psnr_avg,
+            "motion_bpp": motion_bpp_avg, "frame_bpp": frame_bpp_avg,
+            "total_bpp_inter": total_bpp_avg_inter, "total_bpp": total_bpp_avg,
+            "reconstruction": decode_buffer.get_frames(len(decode_buffer)),
+            "pristine": frames
+        }
+
 
     def init_optimizer(self):
         lr_milestone = self.args.lr_milestone
@@ -53,12 +124,6 @@ class Trainer:
         }
         return optimizers
 
-    def init_dataloader(self):
-        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt", transform=RandomCrop(size=256))
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.args.batch_size, shuffle=True)
-        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt")
-        eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
-        return train_dataloader, eval_dataloader
 
     def encode(self, frames: torch.Tensor, stage: str):
         decode_buffer = DecodedBuffer()
@@ -225,30 +290,6 @@ class Trainer:
             print("\n===========Training from scratch===========\n")
         return start_epoch, best_rd_cost
 
-    def train(self):
-        start_epoch, best_rd_cost = self.load_checkpoints()
-        # TODO: scheduler, aux_scheduler = self.init_scheduler(start_epoch=start_epoch)
-        epoch_milestone = self.args.epoch_milestone
-        max_epochs = sum(epoch_milestone)
-        for epoch in range(start_epoch, max_epochs):
-            if epoch < epoch_milestone[:1]:
-                stage = "inter_prediction"
-            elif epoch < sum(epoch_milestone[:2]):
-                stage = "residues_compression"
-            elif epoch < sum(epoch_milestone[:3]):
-                stage = "total"
-            else:
-                stage = "rolling"
-
-            print("\nEpoch {0}, stage is '{1}}'".format(str(epoch), stage))
-            self.train_one_epoch(stage=stage)
-            # TODO: scheduler.step()
-
-            if stage is not "inter_prediction" and epoch % self.args.eval_epochs_interval == 0:
-                rd_cost = self.evaluate()
-                if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
-                    best_rd_cost = min(best_rd_cost, rd_cost)
-                    self.save_ckpt(epoch=epoch, stage=stage, best_rd_cost=best_rd_cost)
 
     @torch.no_grad()
     def evaluate(self, stage) -> float:
