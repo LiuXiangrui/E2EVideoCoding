@@ -39,6 +39,7 @@ class InterFrameCodecFVC(nn.Module):
             feats_hat = self.post_processing(feats, ref_feats_list=ref_feats_list)
 
         frame_hat = self.frame_reconstruction(feats_hat)
+        frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
 
         return frame_hat, residues_likelihoods, motion_likelihoods
 

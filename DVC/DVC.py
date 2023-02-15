@@ -24,6 +24,7 @@ class InterFrameCodecDVC(nn.Module):
         motion_fields_hat = enc_results["x_hat"]
         motion_likelihoods = enc_results["likelihoods"]
         pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
+        pred = torch.clamp(pred, min=0.0, max=1.0)
         return pred, motion_likelihoods
 
     def frame_compress(self, frame: torch.Tensor, pred: torch.Tensor):
@@ -32,6 +33,7 @@ class InterFrameCodecDVC(nn.Module):
         residues_hat = enc_results["x_hat"]
         residues_likelihoods = enc_results["likelihoods"]
         frame_hat = pred + residues_hat
+        frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
         return frame_hat, residues_likelihoods
 
 

@@ -1,3 +1,5 @@
+from abc import ABCMeta, abstractmethod
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -7,29 +9,69 @@ from tqdm import tqdm
 from torchvision.transforms import RandomCrop
 from compressai.zoo import cheng2020_attn as IntraFrameCodec
 
-from DCVC.DCVC import InterFrameCodecDCVC
 from Common.Dataset import Vimeo90KDataset
-from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr, get_normal_params, Record, init
-
-from Common.Trainer import Trainer
+from Common.Utils import DecodedBuffer, Record, calculate_bpp, cal_psnr, get_normal_params, init
 
 
-class TrainerDCVC(Trainer):
-    def __init__(self):
-        super().__init__(inter_frame_codec=InterFrameCodecDCVC)
+class Trainer(metaclass=ABCMeta):
+    def __init__(self, inter_frame_codec: nn.Module):
+        self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
+        self.record = Record(name=[
+            'rd_cost',
+            'recon_psnr', 'recon_psnr_inter',
+            'motion_bpp', 'residues_bpp',
+            'total_bpp', 'total_bpp_inter'
+        ])
 
+        self.inter_frame_codec = inter_frame_codec
+        self.intra_frame_codec = IntraFrameCodec(quality=self.args.quality, metric="mse", pretrained=True)
+        self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
+        self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
+        self.intra_frame_codec.eval()
+
+        self.optimizers = self.init_optimizer()
+
+        self.train_dataloader, self.eval_dataloader = self.init_dataloader()
+
+        self.distortion_metric = nn.MSELoss()
+
+        self.train_steps = 0
+
+    @abstractmethod
     def init_optimizer(self):
         lr_milestone = self.args.lr_milestone
-        assert len(lr_milestone) == 1
-        optimizer = Adam([{'params': get_normal_params(self.inter_frame_codec), 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
-        return optimizer
+        optimizers = {
+            "inter_prediction": Adam(
+                [{'params': itertools.chain(get_normal_params(self.inter_frame_codec.motion_compression),
+                                            get_normal_params(self.inter_frame_codec.motion_comp)),
+                  'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
+            "residues_compression": Adam(
+                [{'params': get_normal_params(self.inter_frame_codec.residues_compression),
+                  'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
 
-    def encode(self, frames: torch.Tensor):
+            "total": Adam(
+                [{'params': get_normal_params(self.inter_frame_codec),
+                 'initial_lr': lr_milestone[2]}], lr=lr_milestone[2])
+        }
+        return optimizers
+
+    def init_dataloader(self):
+        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt", transform=RandomCrop(size=256))
+        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.args.batch_size, shuffle=True)
+        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt")
+        eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
+        return train_dataloader, eval_dataloader
+
+    def encode(self, frames: torch.Tensor, stage: str = None):
         decode_buffer = DecodedBuffer()
 
-        num_available_frames = 2
+        num_available_frames = len(frames) if stage == "rolling_frames" else 2
         intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in
+                        range(1, num_available_frames)]
+
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
+
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
         intra_frame_hat = enc_results["x_hat"]
@@ -39,9 +81,6 @@ class TrainerDCVC(Trainer):
         intra_psnr = cal_psnr(intra_dist)
         intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in
-                        range(1, num_available_frames)]
-
         rd_cost_avg = torch.zeros(0)
         pred_psnr_avg_inter = torch.zeros(0)
         recon_psnr_avg_inter = torch.zeros(0)
@@ -50,27 +89,59 @@ class TrainerDCVC(Trainer):
 
         for frame in inter_frames:
             ref = decode_buffer.get_frames(num_frames=1)
-            pred, motion_likelihoods = self.inter_frame_codec.inter_predict(frame, ref=ref)
-            frame_hat, residues_likelihoods = self.inter_frame_codec.residues_compression(frame, pred=pred)
 
-            pred_dist = self.distortion_metric(pred, frame)
-            pred_psnr = cal_psnr(pred_dist)
+            if stage is "inter_prediction":
+                pred, motion_likelihoods = self.inter_frame_codec.inter_predict(frame, ref=ref)
 
-            recon_dist = self.distortion_metric(frame_hat, frame)
-            recon_psnr = cal_psnr(recon_dist)
+                pred_dist = self.distortion_metric(pred, frame)
+                pred_psnr = cal_psnr(pred_dist)
+                motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
 
-            motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
-            residues_bpp = calculate_bpp(residues_likelihoods, num_pixels=num_pixels)
+                rd_cost = self.args.lambda_weight * pred_dist + motion_bpp
+                rd_cost_avg += rd_cost
+                pred_psnr_avg_inter += pred_psnr
+                motion_bpp_avg += motion_bpp
 
-            rd_cost = self.args.lambda_weight * recon_dist + residues_bpp + motion_bpp
+            elif stage is "residues_compression":
+                with torch.no_grad():
+                    pred, _ = self.inter_frame_codec.inter_predict(frame, ref=ref)
+                frame_hat, residues_likelihoods = self.inter_frame_codec.residues_compression(frame, pred=pred)
 
-            rd_cost_avg += rd_cost
-            recon_psnr_avg_inter += recon_psnr
-            residues_bpp_avg += residues_bpp
-            pred_psnr_avg_inter += pred_psnr
-            motion_bpp_avg += motion_bpp
+                recon_dist = self.distortion_metric(frame_hat, frame)
+                recon_psnr = cal_psnr(recon_dist)
 
-            decode_buffer.update(frame_hat)
+                residues_bpp = calculate_bpp(residues_likelihoods, num_pixels=num_pixels)
+
+                rd_cost = self.args.lambda_weight * recon_dist + residues_bpp
+
+                rd_cost_avg += rd_cost
+                recon_psnr_avg_inter += recon_psnr
+                residues_bpp_avg += residues_bpp
+
+                decode_buffer.update(frame_hat)
+
+            elif stage is "total" or "rolling":
+                pred, motion_likelihoods = self.inter_frame_codec.inter_predict(frame, ref=ref)
+                frame_hat, residues_likelihoods = self.inter_frame_codec.residues_compression(frame, pred=pred)
+
+                pred_dist = self.distortion_metric(pred, frame)
+                pred_psnr = cal_psnr(pred_dist)
+
+                recon_dist = self.distortion_metric(frame_hat, frame)
+                recon_psnr = cal_psnr(recon_dist)
+
+                motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
+                residues_bpp = calculate_bpp(residues_likelihoods, num_pixels=num_pixels)
+
+                rd_cost = self.args.lambda_weight * recon_dist + residues_bpp + motion_bpp
+
+                rd_cost_avg += rd_cost
+                recon_psnr_avg_inter += recon_psnr
+                residues_bpp_avg += residues_bpp
+                pred_psnr_avg_inter += pred_psnr
+                motion_bpp_avg += motion_bpp
+
+                decode_buffer.update(frame_hat)
 
         rd_cost_avg = rd_cost_avg / len(frames)
 
