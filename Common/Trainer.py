@@ -1,20 +1,18 @@
 from abc import ABCMeta, abstractmethod
+from enum import Enum
 
 import torch
 import torch.nn as nn
 from compressai.zoo import cheng2020_anchor as IntraFrameCodec
-from torch.optim import Adam
-from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.data.dataloader import DataLoader
 from torchvision.transforms import RandomCrop
 from tqdm import tqdm
 
 from Common.Dataset import Vimeo90KDataset
 from Common.Utils import Record, init
-from Common.Utils import separate_aux_and_normal_params
 
 
-class Trainer(metaclass=ABCMeta):
+class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
     def __init__(self, inter_frame_codec: nn.Module):
         self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
@@ -40,15 +38,27 @@ class Trainer(metaclass=ABCMeta):
 
         self.train_steps = 0
 
-    @abstractmethod
     def train(self) -> None:
-        raise NotImplementedError
+        start_epoch, best_rd_cost = self.load_checkpoints()
+        epoch_milestone = self.args.epoch_milestone
+
+        max_epochs = sum(epoch_milestone)
+        for epoch in range(start_epoch, max_epochs):
+            stage = self.infer_stage(epoch)
+            print("\nEpoch {0}, stage is '{1}}'".format(str(epoch), stage))
+            self.train_one_epoch(stage=stage)
+
+            if epoch % self.args.eval_epochs == 0:
+                rd_cost = self.evaluate(stage=stage)
+                if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
+                    best_rd_cost = min(best_rd_cost, rd_cost)
+                    self.save_checkpoints(epoch=epoch, best_rd_cost=best_rd_cost, stage=stage)
 
     @torch.no_grad()
-    def evaluate(self, *args, **kwargs) -> float:
+    def evaluate(self, stage: Enum) -> float:
         self.inter_frame_codec.eval()
         for frames in tqdm(self.eval_dataloader, total=len(self.eval_dataloader), smoothing=0.9, ncols=50):
-            encode_results = self.encode_sequence(frames, args, kwargs)
+            encode_results = self.encode_sequence(frames, stage=stage)
             for item in self.record.get_item_list():
                 self.record.update(item, encode_results[item].item())
         rd_cost = self.record.get("rd_cost", average=True)
@@ -56,94 +66,31 @@ class Trainer(metaclass=ABCMeta):
         self.logger.info(info)
         return rd_cost
 
-    def train_one_epoch(self, *args, **kwargs):
+    def train_one_epoch(self, stage: Enum) -> None:
         self.inter_frame_codec.train()
         for sequence in tqdm(self.train_dataloader, total=len(self.train_dataloader), smoothing=0.9, ncols=50):
-            # encoding
-            enc_results = self.encode_sequence(sequence, args, kwargs)
-            # optimization
-            self.optimize(enc_results, args, kwargs)
-            # visualization
+            enc_results = self.encode_sequence(sequence, stage=stage)
+
+            self.optimize(enc_results, stage=stage)
+
             self.train_steps += 1
-            self.visualize(enc_results)
-        self.lr_decay(args, kwargs)
+            self.visualize(enc_results, stage=stage)
+
+        self.lr_decay(stage=stage)
 
     @abstractmethod
-    def encode_sequence(self, frames: torch.Tensor, *args, **kwargs) -> dict:
+    def encode_sequence(self, frames: torch.Tensor, stage: Enum) -> dict:
         raise NotImplementedError
 
-    @abstractmethod
-    def optimize(self, enc_results: dict, *args, **kwargs) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visualize(self, enc_results: dict) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def lr_decay(self, *args, **kwargs) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def init_optimizer(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def init_schedulers(self, start_epoch: int) -> tuple:
-        raise NotImplementedError
-
-    def init_dataloader(self):
-        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt", transform=RandomCrop(size=256))
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.args.batch_size, shuffle=True)
-        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt")
-        eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
-        return train_dataloader, eval_dataloader
-
-    @abstractmethod
-    def load_checkpoints(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor, *args, **kwargs) -> None:
-        raise NotImplementedError
-
-
-class TrainerOneStage(Trainer):
-    def __init__(self, inter_frame_codec: nn.Module) -> None:
-        super().__init__(inter_frame_codec=inter_frame_codec)
-
-    def train(self) -> None:
-        start_epoch, best_rd_cost = self.load_checkpoints()
-
-        self.schedulers, self.aux_schedulers = self.init_schedulers(start_epoch=start_epoch)
-
-        epoch_milestone = self.args.epoch_milestone
-        assert len(epoch_milestone) == 1
-
-        max_epochs = sum(epoch_milestone)
-        for epoch in range(start_epoch, max_epochs):  # only ONE STAGE
-            print("\nEpoch {0}".format(str(epoch)))
-            self.train_one_epoch()
-
-            if epoch % self.args.eval_epochs == 0:
-                rd_cost = self.evaluate()
-                if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
-                    best_rd_cost = min(best_rd_cost, rd_cost)
-                    self.save_ckpt(epoch=epoch, best_rd_cost=best_rd_cost)
-
-    @abstractmethod
-    def encode_sequence(self, frames: torch.Tensor, *args, **kwargs) -> dict:
-        raise NotImplementedError
-
-    def optimize(self, enc_results: dict, *args, **kwargs) -> None:
-        optimizer = self.optimizers
+    def optimize(self, enc_results: dict, stage: Enum) -> None:
+        optimizer = self.optimizers[stage]
         loss = enc_results["rd_cost"]
         loss.backward()
         nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
         optimizer.step()
         optimizer.zero_grad()
 
-        aux_optimizer = self.aux_optimizers
+        aux_optimizer = self.aux_optimizers[stage]
         loss = enc_results["aux_loss"]
         loss.backward()
         nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
@@ -151,32 +98,34 @@ class TrainerOneStage(Trainer):
         aux_optimizer.zero_grad()
 
     @abstractmethod
-    def visualize(self, enc_results: dict) -> None:
+    def visualize(self, enc_results: dict, stage: Enum) -> None:
         raise NotImplementedError
 
-    def lr_decay(self, *args, **kwargs) -> None:
-        self.schedulers.step()
-        self.aux_schedulers.step()
+    def lr_decay(self, stage: Enum) -> None:
+        self.schedulers[stage].step()
+        self.aux_schedulers[stage].step()
 
-    def init_optimizer(self) -> tuple:
-        lr_milestone = self.args.lr_milestone
-        assert len(lr_milestone) == 1
-        params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
+    @abstractmethod
+    def infer_stage(self, epoch: int) -> Enum:
+        raise NotImplementedError
 
-        optimizer = Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
-        aux_optimizer = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
+    @abstractmethod
+    def init_optimizer(self) -> tuple[dict, dict]:
+        raise NotImplementedError
 
-        return optimizer, aux_optimizer
-
+    @abstractmethod
     def init_schedulers(self, start_epoch: int) -> tuple:
-        scheduler = MultiStepLR(optimizer=self.optimizers[0], milestones=self.args.lr_decay_milestone,
-                                gamma=self.args.lr_decay_factor, last_epoch=start_epoch - 1)
-        aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[0], milestones=self.args.lr_decay_milestone,
-                                    gamma=self.args.lr_decay_factor, last_epoch=start_epoch - 1)
+        raise NotImplementedError
 
-        return scheduler, aux_scheduler
+    def init_dataloader(self) -> tuple:
+        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt",
+                                        transform=RandomCrop(size=256))
+        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.args.batch_size, shuffle=True)
+        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt")
+        eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
+        return train_dataloader, eval_dataloader
 
-    def load_checkpoints(self):
+    def load_checkpoints(self) -> tuple:
         start_epoch = 0
         best_rd_cost = 1e9
         if self.args.checkpoints:
@@ -189,8 +138,9 @@ class TrainerOneStage(Trainer):
 
             self.inter_frame_codec.load_state_dict(ckpt["inter_frame_codec"])
 
-            self.optimizers.load_state_dict(ckpt["optimizer"])
-            self.aux_optimizers.load_state_dict(ckpt["aux_optimizer"])
+            stage = self.infer_stage(epoch=ckpt["epoch"])
+            self.optimizers[stage].load_state_dict(ckpt["optimizer"])
+            self.aux_optimizers[stage].load_state_dict(ckpt["aux_optimizer"])
 
         elif self.args.pretrained:
             ckpt = torch.load(self.args.pretrained)
@@ -205,14 +155,14 @@ class TrainerOneStage(Trainer):
             print("\n===========Training from scratch===========\n")
         return start_epoch, best_rd_cost
 
-    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor, *args, **kwargs) -> None:
+    def save_checkpoints(self, epoch: int, best_rd_cost: torch.Tensor, stage: Enum) -> None:
         ckpt = {
             "inter_frame_codec": self.inter_frame_codec.state_dict(),
-            "optimizer": self.optimizers.state_dict(),
-            "aux_optimizer": self.aux_optimizers.state_dict(),
+            "optimizer": self.optimizers[stage].state_dict(),
+            "aux_optimizer": self.aux_optimizers[stage].state_dict(),
             "epoch": epoch,
             "best_rd_cost": best_rd_cost
         }
-        ckpt_path = "%s/DCVC_Inter_%.3d.pth" % (self.checkpoints_dir, epoch)
+        ckpt_path = "%s/Inter_Frame_Codec_%.3d.pth" % (self.checkpoints_dir, epoch)
         torch.save(ckpt, ckpt_path)
         print("\nSave model to " + ckpt_path)

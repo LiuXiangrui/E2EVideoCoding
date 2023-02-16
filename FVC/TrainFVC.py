@@ -3,54 +3,27 @@ from enum import Enum, unique
 import torch
 import torch.nn as nn
 from torch.optim import Adam
+from torch.optim.lr_scheduler import MultiStepLR
 
-from Common.Trainer import Trainer
+from Common.Trainer import TrainerABC
 from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
 from FVC import InterFrameCodecFVC
 
 
 @unique
 class TrainingStage(Enum):
-    WITHOUT_FUSION = 1,
-    WITH_FUSION = 2,
-    FINE_TUNE = 3,
-    NOT_AVAILABLE = 4
+    WITHOUT_FUSION = 0,
+    WITH_FUSION = 1,
+    NOT_AVAILABLE = 2
 
 
-class TrainerFVC(Trainer):
+class TrainerFVC(TrainerABC):
     def __init__(self, inter_frame_codec: nn.Module) -> None:
         super().__init__(inter_frame_codec=inter_frame_codec)
 
-    def get_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone
-        if epoch < epoch_milestone[:1]:
-            stage = TrainingStage.WITHOUT_FUSION
-        elif epoch < sum(epoch_milestone[:2]):
-            stage = TrainingStage.WITH_FUSION
-        elif epoch < sum(epoch_milestone[:3]):
-            stage = TrainingStage.FINE_TUNE
-        else:
-            stage = TrainingStage.NOT_AVAILABLE
-        return stage
+    def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
+        assert stage != TrainingStage.NOT_AVAILABLE
 
-    def train(self):
-        start_epoch, best_rd_cost = self.load_checkpoints()
-
-        epoch_milestone = self.args.epoch_milestone
-        assert len(epoch_milestone) == 3
-
-        max_epochs = sum(epoch_milestone)
-        for epoch in range(start_epoch, max_epochs):
-            print("\nEpoch {0}, stage is '{1}}'".format(str(epoch), self.get_stage(epoch)))
-            self.train_one_epoch(stage=self.get_stage(epoch))
-
-            if epoch % self.args.eval_epochs == 0:
-                rd_cost = self.evaluate(stage=self.get_stage(epoch))
-                if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
-                    best_rd_cost = min(best_rd_cost, rd_cost)
-                    self.save_ckpt(epoch=epoch, best_rd_cost=best_rd_cost, stage=self.get_stage(epoch))
-
-    def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage = TrainingStage.NOT_AVAILABLE, *args, **kwargs) -> dict:
         decode_frame_buffer = DecodedFrameBuffer()
 
         num_available_frames = 2 if stage == TrainingStage.WITHOUT_FUSION else 4
@@ -111,22 +84,7 @@ class TrainerFVC(Trainer):
             "pristine": frames
         }
 
-    def optimize(self, enc_results: dict, stage: TrainingStage = TrainingStage.NOT_AVAILABLE, *args, **kwargs) -> None:
-        optimizer = self.optimizers[stage]
-        loss = enc_results["rd_cost"]
-        loss.backward()
-        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
-        optimizer.step()
-        optimizer.zero_grad()
-
-        aux_optimizer = self.aux_optimizers[stage]
-        loss = enc_results["aux_loss"]
-        loss.backward()
-        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
-        aux_optimizer.step()
-        aux_optimizer.zero_grad()
-
-    def visualize(self, enc_results: dict) -> None:
+    def visualize(self, enc_results: dict, stage: TrainingStage) -> None:
         self.tensorboard.add_scalars(main_tag="Training/PSNR", global_step=self.train_steps,
                                      tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"]})
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
@@ -137,10 +95,19 @@ class TrainerFVC(Trainer):
             self.tensorboard.add_images(tag="Training/Pristine", global_step=self.train_steps,
                                         img_tensor=torch.stack(enc_results["pristine"], dim=1)[0].clone().detach().cpu())
 
-    def lr_decay(self, *args, **kwargs) -> None:
-        pass
+    def infer_stage(self, epoch: int) -> TrainingStage:
+        epoch_milestone = self.args.epoch_milestone
+        if epoch < epoch_milestone[:1]:
+            stage = TrainingStage.WITHOUT_FUSION
+        elif epoch < sum(epoch_milestone[:2]):
+            stage = TrainingStage.WITH_FUSION
+        elif epoch < sum(epoch_milestone[:3]):
+            stage = TrainingStage.FINE_TUNE
+        else:
+            stage = TrainingStage.NOT_AVAILABLE
+        return stage
 
-    def init_optimizer(self) -> tuple:
+    def init_optimizer(self) -> tuple[dict, dict]:
         lr_milestone = self.args.lr_milestone
         assert len(lr_milestone) == 3
 
@@ -160,52 +127,26 @@ class TrainerFVC(Trainer):
         }
         return optimizers, aux_optimizers
 
-    def init_schedulers(self, start_epoch: int) -> tuple:
-        pass
+    def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
+        lr_decay_milestone = self.args.lr_decay_milestone
 
-    def load_checkpoints(self) -> tuple:
-        start_epoch = 0
-        best_rd_cost = 1e9
-        if self.args.checkpoints:
-            print("\n===========Load checkpoints {0}===========\n".format(self.args.checkpoints))
-            ckpt = torch.load(self.args.checkpoints, map_location="cuda" if self.args.gpu else "cpu")
-
-            best_rd_cost = ckpt['best_rd_cost']
-
-            start_epoch = ckpt["epoch"] + 1
-
-            self.inter_frame_codec.load_state_dict(ckpt["inter_frame_codec"])
-
-            stage = self.get_stage(epoch=ckpt["epoch"])
-            self.optimizers[stage].load_state_dict(ckpt["optimizer"])
-            self.aux_optimizers[stage].load_state_dict(ckpt["aux_optimizer"])
-
-        elif self.args.pretrained:
-            ckpt = torch.load(self.args.pretrained)
-            print("\n===========Load pretrained {0}===========\n".format(self.args.pretrained))
-            pretrained_dict = ckpt["inter_frame_codec"]
-            model_dict = self.inter_frame_codec.state_dict()
-            pretrained_dict = {k: v for k, v in pretrained_dict.items() if
-                               k in model_dict.keys() and v.shape == model_dict[k].shape}
-            model_dict.update(pretrained_dict)
-            self.inter_frame_codec.load_state_dict(model_dict)
-        else:
-            print("\n===========Training from scratch===========\n")
-        return start_epoch, best_rd_cost
-
-    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor, stage: TrainingStage = TrainingStage.NOT_AVAILABLE, *args, **kwargs) -> None:
-        ckpt = {
-            "inter_frame_codec": self.inter_frame_codec.state_dict(),
-            "optimizer": self.optimizers[stage].state_dict(),
-            "aux_optimizer": self.aux_optimizers[stage].state_dict(),
-            "epoch": epoch,
-            "best_rd_cost": best_rd_cost
+        schedulers = {
+            TrainingStage.WITHOUT_FUSION: MultiStepLR(optimizer=self.optimizers[TrainingStage.WITHOUT_FUSION], last_epoch=start_epoch - 1,
+                                                      milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor),
+            TrainingStage.WITH_FUSION: MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_FUSION], last_epoch=start_epoch - 1,
+                                                   milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor),
         }
-        ckpt_path = "%s/DCVC_Inter_%.3d.pth" % (self.checkpoints_dir, epoch)
-        torch.save(ckpt, ckpt_path)
-        print("\nSave model to " + ckpt_path)
+
+        aux_schedulers = {
+            TrainingStage.WITHOUT_FUSION: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITHOUT_FUSION], last_epoch=start_epoch - 1,
+                                                      milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor),
+            TrainingStage.WITH_FUSION: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_FUSION], last_epoch=start_epoch - 1,
+                                                   milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+        }
+
+        return schedulers, aux_schedulers
 
 
 if __name__ == "__main__":
-    trainer = Trainer(inter_frame_codec=InterFrameCodecFVC)
+    trainer = TrainerFVC(inter_frame_codec=InterFrameCodecFVC)
     trainer.train()

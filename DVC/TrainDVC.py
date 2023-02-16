@@ -1,17 +1,27 @@
+from enum import Enum, unique
+
 import torch
 import torch.nn as nn
+from torch.optim import Adam
+from torch.optim.lr_scheduler import MultiStepLR
 
-from Common.Trainer import TrainerOneStage
-from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr
+from Common.Trainer import TrainerABC
+from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
 from DVC import InterFrameCodecDVC
 
 
-class TrainerDVC(TrainerOneStage):
+@unique
+class TrainingStage(Enum):
+    TRAIN = 0,
+    NOT_AVAILABLE = 1
+
+
+class TrainerDVC(TrainerABC):
     def __init__(self, inter_frame_codec: nn.Module) -> None:
         super().__init__(inter_frame_codec=inter_frame_codec)
         self.record.add_item("pred_psnr")
 
-    def encode_sequence(self, frames: torch.Tensor, *args, **kwargs) -> dict:
+    def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         decode_frame_buffer = DecodedFrameBuffer()
 
         num_available_frames = 2
@@ -75,18 +85,59 @@ class TrainerDVC(TrainerOneStage):
             "pristine": frames
         }
 
-    def visualize(self, enc_results: dict) -> None:
+    def visualize(self, enc_results: dict, stage: TrainingStage) -> None:
         self.tensorboard.add_scalars(main_tag="Training/PSNR", global_step=self.train_steps,
-                                     tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"],
-                                                      "Prediction": enc_results["pred_psnr"]})
+                                     tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"], "Prediction": enc_results["pred_psnr"]})
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
-                                     tag_scalar_dict={"Motion Info": enc_results["motion_bpp"],
-                                                      "Frame": enc_results["frame_bpp"]})
+                                     tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
         if self.train_steps % 100 == 0:
             self.tensorboard.add_images(tag="Training/Reconstruction", global_step=self.train_steps,
                                         img_tensor=torch.stack(enc_results["reconstruction"], dim=1)[0].clone().detach().cpu())
             self.tensorboard.add_images(tag="Training/Pristine", global_step=self.train_steps,
                                         img_tensor=torch.stack(enc_results["pristine"], dim=1)[0].clone().detach().cpu())
+
+    def lr_decay(self, stage: TrainingStage) -> None:
+        self.schedulers[stage].step()
+        self.aux_schedulers[stage].step()
+
+    def infer_stage(self, epoch: int) -> TrainingStage:
+        epoch_milestone = self.args.epoch_milestone
+        if epoch < epoch_milestone[:1]:
+            stage = TrainingStage.TRAIN
+        else:
+            stage = TrainingStage.NOT_AVAILABLE
+        return stage
+
+    def init_optimizer(self) -> tuple[dict, dict]:
+        lr_milestone = self.args.lr_milestone
+        assert len(lr_milestone) == 1
+
+        params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
+
+        optimizers = {
+            TrainingStage.TRAIN: Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
+        }
+
+        aux_optimizers = {
+            TrainingStage.TRAIN: Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
+        }
+        return optimizers, aux_optimizers
+
+    def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
+        lr_decay_milestone = self.args.lr_decay_milestone
+        assert len(lr_decay_milestone) == 1
+
+        schedulers = {
+            TrainingStage.TRAIN: MultiStepLR(optimizer=self.optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,
+                                             milestones=self.args.lr_decay_milestone[0], gamma=self.args.lr_decay_factor)
+        }
+
+        aux_schedulers = {
+            TrainingStage.TRAIN: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,
+                                             milestones=self.args.lr_decay_milestone[0], gamma=self.args.lr_decay_factor)
+        }
+
+        return schedulers, aux_schedulers
 
 
 if __name__ == "__main__":

@@ -81,5 +81,5 @@ class InterFrameCodecFVC(nn.Module):
 
 if __name__ == "__main__":
     a = InterFrameCodecFVC()
-    a(torch.randn(1, 3, 128, 128), torch.randn(1, 3, 128, 128))
-    a(torch.randn(1, 3, 128, 128), torch.randn(1, 3, 128, 128), True, [torch.randn(1, 64, 64, 64)] * 3)
+    a(torch.randn(1, 3, 128, 128), [torch.randn(1, 3, 128, 128), ])
+    a(torch.randn(1, 3, 128, 128), [torch.randn(1, 3, 128, 128), ] * 3, True)
