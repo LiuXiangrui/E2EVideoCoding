@@ -1,9 +1,8 @@
 import torch
 import torch.nn.functional as F
-from compressai.layers import GDN
-
-from compressai.models import CompressionModel
 from compressai.ans import BufferedRansEncoder, RansDecoder
+from compressai.layers import GDN
+from compressai.models import CompressionModel
 from torch import nn as nn
 
 from Common.BasicBlock import ResBlock, EncUnit, DecUnit

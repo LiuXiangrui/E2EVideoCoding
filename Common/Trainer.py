@@ -136,14 +136,14 @@ class TrainerOneStage(Trainer):
         raise NotImplementedError
 
     def optimize(self, enc_results: dict, *args, **kwargs) -> None:
-        optimizer = self.optimizers[0]
+        optimizer = self.optimizers
         loss = enc_results["rd_cost"]
         loss.backward()
         nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
         optimizer.step()
         optimizer.zero_grad()
 
-        aux_optimizer = self.aux_optimizers[0]
+        aux_optimizer = self.aux_optimizers
         loss = enc_results["aux_loss"]
         loss.backward()
         nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
@@ -155,8 +155,8 @@ class TrainerOneStage(Trainer):
         raise NotImplementedError
 
     def lr_decay(self, *args, **kwargs) -> None:
-        self.schedulers[0].step()
-        self.aux_schedulers[0].step()
+        self.schedulers.step()
+        self.aux_schedulers.step()
 
     def init_optimizer(self) -> tuple:
         lr_milestone = self.args.lr_milestone
@@ -166,7 +166,7 @@ class TrainerOneStage(Trainer):
         optimizer = Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
         aux_optimizer = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
 
-        return [optimizer, ], [aux_optimizer, ]
+        return optimizer, aux_optimizer
 
     def init_schedulers(self, start_epoch: int) -> tuple:
         scheduler = MultiStepLR(optimizer=self.optimizers[0], milestones=self.args.lr_decay_milestone,
@@ -174,7 +174,7 @@ class TrainerOneStage(Trainer):
         aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[0], milestones=self.args.lr_decay_milestone,
                                     gamma=self.args.lr_decay_factor, last_epoch=start_epoch - 1)
 
-        return [scheduler, ], [aux_scheduler, ]
+        return scheduler, aux_scheduler
 
     def load_checkpoints(self):
         start_epoch = 0
@@ -182,20 +182,15 @@ class TrainerOneStage(Trainer):
         if self.args.checkpoints:
             print("\n===========Load checkpoints {0}===========\n".format(self.args.checkpoints))
             ckpt = torch.load(self.args.checkpoints, map_location="cuda" if self.args.gpu else "cpu")
+
+            best_rd_cost = ckpt['best_rd_cost']
+
+            start_epoch = ckpt["epoch"] + 1
+
             self.inter_frame_codec.load_state_dict(ckpt["inter_frame_codec"])
-            try:
-                self.optimizers[0].load_state_dict(ckpt["optimizer"])
-                self.aux_optimizers[0].load_state_dict(ckpt["aux_optimizer"])
-            except:
-                print("Can not find some optimizers params, just ignore")
-            try:
-                best_rd_cost = ckpt['best_rd_cost']
-            except:
-                print("Can not find the record of the best rd cost, just set it to 1e9 as default.")
-            try:
-                start_epoch = ckpt["epoch"] + 1
-            except:
-                print("Can not find start epoch, just set to 0 as default.")
+
+            self.optimizers.load_state_dict(ckpt["optimizer"])
+            self.aux_optimizers.load_state_dict(ckpt["aux_optimizer"])
 
         elif self.args.pretrained:
             ckpt = torch.load(self.args.pretrained)
@@ -213,8 +208,8 @@ class TrainerOneStage(Trainer):
     def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor, *args, **kwargs) -> None:
         ckpt = {
             "inter_frame_codec": self.inter_frame_codec.state_dict(),
-            "optimizer": self.optimizers[0].state_dict(),
-            "aux_optimizer": self.aux_optimizers[0].state_dict(),
+            "optimizer": self.optimizers.state_dict(),
+            "aux_optimizer": self.aux_optimizers.state_dict(),
             "epoch": epoch,
             "best_rd_cost": best_rd_cost
         }
