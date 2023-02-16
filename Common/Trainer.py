@@ -16,7 +16,7 @@ from Common.Utils import separate_aux_and_normal_params
 
 class Trainer(metaclass=ABCMeta):
     @abstractmethod
-    def __init__(self, inter_frame_codec: nn.Module, num_available_frames: int = 2):
+    def __init__(self, inter_frame_codec: nn.Module):
         self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
         self.record = Record(item_list=[
             'rd_cost',
@@ -39,7 +39,6 @@ class Trainer(metaclass=ABCMeta):
         self.distortion_metric = nn.MSELoss()
 
         self.train_steps = 0
-        self.num_available_frames = num_available_frames
 
     @abstractmethod
     def train(self) -> None:
@@ -94,18 +93,24 @@ class Trainer(metaclass=ABCMeta):
         raise NotImplementedError
 
     def init_dataloader(self):
-        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt",
-                                        num_available_frames=self.num_available_frames, transform=RandomCrop(size=256))
+        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt", transform=RandomCrop(size=256))
         train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.args.batch_size, shuffle=True)
-        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt",
-                                       num_available_frames=self.num_available_frames)
+        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt")
         eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
         return train_dataloader, eval_dataloader
 
+    @abstractmethod
+    def load_checkpoints(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor, *args, **kwargs) -> None:
+        raise NotImplementedError
+
 
 class TrainerOneStage(Trainer):
-    def __init__(self, inter_frame_codec: nn.Module, num_available_frames: int = 2) -> None:
-        super().__init__(inter_frame_codec=inter_frame_codec, num_available_frames=num_available_frames)
+    def __init__(self, inter_frame_codec: nn.Module) -> None:
+        super().__init__(inter_frame_codec=inter_frame_codec)
 
     def train(self) -> None:
         start_epoch, best_rd_cost = self.load_checkpoints()
@@ -132,18 +137,18 @@ class TrainerOneStage(Trainer):
 
     def optimize(self, enc_results: dict, *args, **kwargs) -> None:
         optimizer = self.optimizers[0]
-        optimizer.zero_grad()
         loss = enc_results["rd_cost"]
         loss.backward()
         nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
         optimizer.step()
+        optimizer.zero_grad()
 
         aux_optimizer = self.aux_optimizers[0]
-        aux_optimizer.zero_grad()
         loss = enc_results["aux_loss"]
         loss.backward()
         nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
         aux_optimizer.step()
+        aux_optimizer.zero_grad()
 
     @abstractmethod
     def visualize(self, enc_results: dict) -> None:
@@ -205,7 +210,7 @@ class TrainerOneStage(Trainer):
             print("\n===========Training from scratch===========\n")
         return start_epoch, best_rd_cost
 
-    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor):
+    def save_ckpt(self, epoch: int, best_rd_cost: torch.Tensor, *args, **kwargs) -> None:
         ckpt = {
             "inter_frame_codec": self.inter_frame_codec.state_dict(),
             "optimizer": self.optimizers[0].state_dict(),

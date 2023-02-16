@@ -124,25 +124,17 @@ def init():
     return args, logger, ckpt_dir, tb
 
 
-class DecodedBuffer:
-    def __init__(self, require_feats_buffer: bool = False):
+class DecodedFrameBuffer:
+    def __init__(self):
         super().__init__()
         self.frame_buffer = list()
-        self.feats_buffer = list() if require_feats_buffer else None
 
     def get_frames(self, num_frames: int = 1) -> Union[list, torch.Tensor]:
         assert 1 <= num_frames <= len(self.frame_buffer)
-        return self.frame_buffer[-num_frames:] if num_frames > 1 else self.frame_buffer[-1]
+        return self.frame_buffer[-num_frames:]
 
-    def get_feats(self, num_feats: int = 1) -> Union[list, torch.Tensor]:
-        assert self.feats_buffer is not None and 1 <= num_feats <= len(self.feats_buffer)
-        return self.feats_buffer[-num_feats:] if num_feats > 1 else self.feats_buffer[-1]
-
-    def update(self, frame: torch.Tensor, feats: torch.Tensor = None):
-        assert self.feats_buffer and feats
+    def update(self, frame: torch.Tensor):
         self.frame_buffer.append(frame)
-        if feats is not None:
-            self.feats_buffer.append(feats)
 
     def __len__(self):
         return len(self.frame_buffer)
@@ -165,16 +157,20 @@ def cal_psnr(distortion: torch.Tensor):
     return psnr
 
 
-def separate_aux_and_normal_params(net: nn.Module):
+def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None):
     parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
     aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
     fixed_parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and not p.requires_grad)
-
+    if exclude_net is not None:
+        excluded_parameters = set(n for n, p in exclude_net.named_parameters())
+        assert excluded_parameters <= parameters
+        parameters = parameters - excluded_parameters
     params_dict = dict(net.named_parameters())
     inter_params = parameters & aux_parameters
     union_params = parameters | aux_parameters | fixed_parameters
     assert len(inter_params) == 0
     assert len(union_params) - len(params_dict.keys()) == 0
+
     params = (params_dict[n] for n in sorted(list(parameters)))
     aux_params = (params_dict[n] for n in sorted(list(aux_parameters)))
 

@@ -54,6 +54,8 @@ class MultiFrameFeatsFusion(nn.Module):
         self.fusion = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)
 
     def forward(self, feats: torch.Tensor, ref_feats_list: list) -> torch.Tensor:
+        while len(ref_feats_list) < 3:  # TODO: 在下次会议提到这一点
+            ref_feats_list.append(ref_feats_list[-1].clone())
         feats_list = [self.branch_self(feats), ]
         for ref, branch in zip(ref_feats_list, self.branches_ref):
             feats_list.append(branch(feats, ref=ref))

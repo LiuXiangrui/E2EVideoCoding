@@ -7,10 +7,10 @@ from torchvision.transforms import ToTensor
 
 
 class Vimeo90KDataset(Dataset):
-    def __init__(self, num_available_frames: int, root: str, list_filename: str, seq_folder: str = "sequences", transform=None):
+    def __init__(self, root: str, list_filename: str, seq_folder: str = "sequences", transform=None):
         self.to_tensor = ToTensor()
         self.transform = transform
-        self.num_available_frames = num_available_frames
+        self.num_available_frames = 7
 
         with open(os.path.join(root, list_filename), mode='r') as f:
             seq_list = f.readlines()

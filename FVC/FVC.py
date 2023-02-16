@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 
 from Common.BasicBlock import EncUnit, DecUnit
-
+from Modules import MotionCompensation, MotionEstimation
 from Modules import MultiFrameFeatsFusion
 from Modules import ResiduesCompression, MotionCompression
-from Modules import MotionCompensation, MotionEstimation
 
 
 class InterFrameCodecFVC(nn.Module):
@@ -19,15 +18,15 @@ class InterFrameCodecFVC(nn.Module):
         self.frame_reconstruction = DecUnit(in_channels=64, out_channels=3)
         self.post_processing = MultiFrameFeatsFusion(motion_est=self.motion_est, motion_comp=self.motion_comp)
 
-    def forward(self, frame: torch.Tensor, ref: torch.Tensor, ref_feats_list: list = None) -> tuple:
+    def forward(self, frame: torch.Tensor, ref_frames_list: list, fusion: bool = False) -> tuple:
         feats = self.feats_extraction(frame)
-        ref = self.feats_extraction(ref)
+        ref_feats_list = [self.feats_extraction(f) for f in ref_frames_list]
 
-        motion_fields = self.motion_est(feats, ref=ref)
+        motion_fields = self.motion_est(feats, ref=ref_feats_list[0])
         enc_results = self.motion_compression(motion_fields)
         motion_fields_hat = enc_results["x_hat"]
         motion_likelihoods = enc_results["likelihoods"]
-        pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
+        pred = self.motion_comp(ref_feats_list[0], motion_fields=motion_fields_hat)
 
         residues = feats - pred
         enc_results = self.residues_compression(residues)
@@ -35,28 +34,27 @@ class InterFrameCodecFVC(nn.Module):
         residues_likelihoods = enc_results["likelihoods"]
         feats_hat = pred + residues_hat
 
-        if ref_feats_list is not None:
-            assert len(ref_feats_list) == 3
+        if fusion:
             feats_hat = self.post_processing(feats, ref_feats_list=ref_feats_list)
 
         frame_hat = self.frame_reconstruction(feats_hat)
         frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
 
-        return frame_hat, feats_hat, residues_likelihoods, motion_likelihoods
+        return frame_hat, residues_likelihoods, motion_likelihoods
 
     @torch.no_grad()
-    def encode(self, frame: torch.Tensor, ref: torch.Tensor) -> tuple:
+    def encode(self, frame: torch.Tensor, ref_frames_list: torch.Tensor) -> tuple:
         feats = self.feats_extraction(frame)
-        ref = self.feats_extraction(ref)
+        ref_feats_list = [self.feats_extraction(f) for f in ref_frames_list]
 
-        motion_fields = self.motion_est(feats, ref=ref)
+        motion_fields = self.motion_est(feats, ref=ref_feats_list[0])
 
         enc_results = self.motion_compression.compress(motion_fields)
         motion_strings = enc_results["strings"]
         motion_hyper_shape = enc_results["shape"]
         motion_fields_hat = self.motion_compression.decompress(strings=motion_strings, shape=motion_hyper_shape)["x_hat"]
 
-        pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
+        pred = self.motion_comp(ref_feats_list[0], motion_fields=motion_fields_hat)
 
         enc_results = self.residues_compression.compress(feats - pred)
         frame_strings = enc_results["strings"]

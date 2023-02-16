@@ -2,18 +2,19 @@ import torch
 import torch.nn as nn
 
 from Common.Trainer import TrainerOneStage
-from Common.Utils import DecodedBuffer, calculate_bpp, cal_psnr
+from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr
 from DCVC import InterFrameCodecDCVC
 
 
 class TrainerDCVC(TrainerOneStage):
-    def __init__(self, inter_frame_codec: nn.Module, num_available_frames: int = 2) -> None:
-        super().__init__(inter_frame_codec=inter_frame_codec, num_available_frames=num_available_frames)
+    def __init__(self, inter_frame_codec: nn.Module) -> None:
+        super().__init__(inter_frame_codec=inter_frame_codec)
 
     def encode_sequence(self, frames: torch.Tensor, *args, **kwargs) -> dict:
-        decode_buffer = DecodedBuffer()
+        decode_frame_buffer = DecodedFrameBuffer()
 
         num_available_frames = 2
+        frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
         intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
@@ -21,7 +22,7 @@ class TrainerDCVC(TrainerOneStage):
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
         intra_frame_hat = enc_results["x_hat"]
-        decode_buffer.update(intra_frame_hat)
+        decode_frame_buffer.update(intra_frame_hat)
 
         intra_dist = self.distortion_metric(intra_frame_hat, intra_frame)
         intra_psnr = cal_psnr(intra_dist)
@@ -33,7 +34,7 @@ class TrainerDCVC(TrainerOneStage):
 
         # P frame coding
         for frame in inter_frames:
-            ref = decode_buffer.get_frames(num_frames=1)
+            ref = decode_frame_buffer.get_frames(num_frames=1)[0]
 
             frame_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
 
@@ -52,7 +53,7 @@ class TrainerDCVC(TrainerOneStage):
             frame_bpp_avg += frame_bpp / len(inter_frames)
             motion_bpp_avg += motion_bpp / len(inter_frames)
 
-            decode_buffer.update(frame_hat)
+            decode_frame_buffer.update(frame_hat)
 
         recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / (len(frames))
 
@@ -65,7 +66,7 @@ class TrainerDCVC(TrainerOneStage):
             "recon_psnr_inter": recon_psnr_avg_inter, "recon_psnr": recon_psnr_avg,
             "motion_bpp": motion_bpp_avg, "frame_bpp": frame_bpp_avg,
             "total_bpp_inter": total_bpp_avg_inter, "total_bpp": total_bpp_avg,
-            "reconstruction": decode_buffer.get_frames(len(decode_buffer)),
+            "reconstruction": decode_frame_buffer.get_frames(len(decode_frame_buffer)),
             "pristine": frames
         }
 
