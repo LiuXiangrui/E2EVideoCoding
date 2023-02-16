@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
+from torchvision.utils import make_grid
 
 from Common.Trainer import TrainerABC
 from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
@@ -41,6 +42,8 @@ class TrainerDVC(TrainerABC):
 
         inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, num_available_frames)]
 
+        prediction = [torch.zeros_like(intra_frame_hat), ]
+
         rd_cost_avg = aux_loss_avg = pred_psnr_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
 
         # P frame coding
@@ -70,6 +73,8 @@ class TrainerDVC(TrainerABC):
 
             decode_frame_buffer.update(frame_hat)
 
+            prediction.append(pred)
+
         recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / num_available_frames
 
         total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
@@ -81,8 +86,9 @@ class TrainerDVC(TrainerABC):
             "pred_psnr": pred_psnr_avg, "recon_psnr_inter": recon_psnr_avg_inter, "recon_psnr": recon_psnr_avg,
             "motion_bpp": motion_bpp_avg, "frame_bpp": frame_bpp_avg,
             "total_bpp_inter": total_bpp_avg_inter, "total_bpp": total_bpp_avg,
-            "reconstruction": decode_frame_buffer.get_frames(num_frames=1)[0],
-            "pristine": frames
+            "reconstruction": decode_frame_buffer.get_frames(num_frames=num_available_frames),
+            "pristine": [frames[:, i, :, :, :] for i in range(num_available_frames)],
+            "prediction": prediction
         }
 
     def visualize(self, enc_results: dict, stage: TrainingStage) -> None:
@@ -91,10 +97,13 @@ class TrainerDVC(TrainerABC):
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                      tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
         if self.train_steps % 100 == 0:
-            self.tensorboard.add_images(tag="Training/Reconstruction", global_step=self.train_steps,
-                                        img_tensor=torch.stack(enc_results["reconstruction"], dim=1)[0].clone().detach().cpu())
-            self.tensorboard.add_images(tag="Training/Pristine", global_step=self.train_steps,
-                                        img_tensor=torch.stack(enc_results["pristine"], dim=1)[0].clone().detach().cpu())
+            for i in range(len(enc_results["pristine"])):
+                self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
+                                            img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())
+                self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
+                                            img_tensor=enc_results["pristine"][i].clone().detach().cpu())
+                self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
+                                            img_tensor=enc_results["prediction"][i].clone().detach().cpu())
 
     def lr_decay(self, stage: TrainingStage) -> None:
         self.schedulers[stage].step()

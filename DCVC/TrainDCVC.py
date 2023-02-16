@@ -77,7 +77,7 @@ class TrainerDCVC(TrainerABC):
             "motion_bpp": motion_bpp_avg, "frame_bpp": frame_bpp_avg,
             "total_bpp_inter": total_bpp_avg_inter, "total_bpp": total_bpp_avg,
             "reconstruction": decode_frame_buffer.get_frames(len(decode_frame_buffer)),
-            "pristine": frames
+            "pristine": [frames[:, i, :, :, :] for i in range(num_available_frames)]
         }
 
     def visualize(self, enc_results: dict, stage: TrainingStage) -> None:
@@ -86,10 +86,11 @@ class TrainerDCVC(TrainerABC):
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                      tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
         if self.train_steps % 100 == 0:
-            self.tensorboard.add_images(tag="Training/Reconstruction", global_step=self.train_steps,
-                                        img_tensor=torch.stack(enc_results["reconstruction"], dim=1)[0].clone().detach().cpu())
-            self.tensorboard.add_images(tag="Training/Pristine", global_step=self.train_steps,
-                                        img_tensor=torch.stack(enc_results["pristine"], dim=1)[0].clone().detach().cpu())
+            for i in range(len(enc_results["pristine"])):
+                self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
+                                            img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())
+                self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
+                                            img_tensor=enc_results["pristine"][i].clone().detach().cpu())
 
     def infer_stage(self, epoch: int) -> TrainingStage:
         epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
