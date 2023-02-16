@@ -40,12 +40,15 @@ class TrainerABC(metaclass=ABCMeta):
 
     def train(self) -> None:
         start_epoch, best_rd_cost = self.load_checkpoints()
-        epoch_milestone = self.args.epoch_milestone
+
+        self.schedulers, self.aux_schedulers = self.init_schedulers(start_epoch=start_epoch)
+
+        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
 
         max_epochs = sum(epoch_milestone)
         for epoch in range(start_epoch, max_epochs):
             stage = self.infer_stage(epoch)
-            print("\nEpoch {0}, stage is '{1}}'".format(str(epoch), stage))
+            print("\nEpoch {0} Stage '{1}'".format(str(epoch), stage))
             self.train_one_epoch(stage=stage)
 
             if epoch % self.args.eval_epochs == 0:

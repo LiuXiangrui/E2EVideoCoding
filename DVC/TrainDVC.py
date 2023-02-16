@@ -70,10 +70,10 @@ class TrainerDVC(TrainerABC):
 
             decode_frame_buffer.update(frame_hat)
 
-        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / (len(frames))
+        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / num_available_frames
 
         total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
-        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / (len(frames) + 1)
+        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / num_available_frames
 
         return {
             "rd_cost": rd_cost_avg,
@@ -101,15 +101,17 @@ class TrainerDVC(TrainerABC):
         self.aux_schedulers[stage].step()
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone
-        if epoch < epoch_milestone[:1]:
+        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
+        assert len(epoch_milestone) == 1
+
+        if epoch < sum(epoch_milestone[:1]):
             stage = TrainingStage.TRAIN
         else:
             stage = TrainingStage.NOT_AVAILABLE
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
-        lr_milestone = self.args.lr_milestone
+        lr_milestone = self.args.lr_milestone if isinstance(self.args.lr_milestone, list) else [self.args.lr_milestone, ]
         assert len(lr_milestone) == 1
 
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
@@ -124,17 +126,16 @@ class TrainerDVC(TrainerABC):
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
-        lr_decay_milestone = self.args.lr_decay_milestone
-        assert len(lr_decay_milestone) == 1
+        lr_decay_milestone = self.args.lr_decay_milestone if isinstance(self.args.lr_decay_milestone, list) else [self.args.lr_decay_milestone, ]
 
         schedulers = {
             TrainingStage.TRAIN: MultiStepLR(optimizer=self.optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,
-                                             milestones=self.args.lr_decay_milestone[0], gamma=self.args.lr_decay_factor)
+                                             milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
         }
 
         aux_schedulers = {
             TrainingStage.TRAIN: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,
-                                             milestones=self.args.lr_decay_milestone[0], gamma=self.args.lr_decay_factor)
+                                             milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
         }
 
         return schedulers, aux_schedulers

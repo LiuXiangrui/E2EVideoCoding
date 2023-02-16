@@ -14,7 +14,7 @@ class Vimeo90KDataset(Dataset):
 
         with open(os.path.join(root, list_filename), mode='r') as f:
             seq_list = f.readlines()
-            seq_list = [os.path.join(root, seq_folder, seq) for seq in seq_list]
+            seq_list = [os.path.join(root, seq_folder, seq.strip('\n')) for seq in seq_list]
 
         self.seq_list = seq_list
 

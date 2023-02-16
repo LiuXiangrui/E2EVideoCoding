@@ -31,6 +31,9 @@ class PredRefine(nn.Module):
         return self.net(torch.cat([ref, aligned_ref], dim=1))
 
 
+# TODO: 论文图3中offset的通道数为64，但重建offset通道数是128
+# 如果采用128作为重建通道数，则图5中deform compensation就无法与inter prediction里deform comp权值共享
+# 因此，我在实现中采用了64作为offset重建通道数
 class MotionCompensation(nn.Module):
     def __init__(self, group: int = 8, deform_kernel_size: int = 3):
         super().__init__()

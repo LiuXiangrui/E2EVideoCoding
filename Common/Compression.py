@@ -361,7 +361,6 @@ class AnalysisTransformWithResBlocks(nn.Module):
         self.transform = nn.Sequential(
             EncUnit(in_channels=in_channels, out_channels=internal_channels),
             EncUnit(in_channels=internal_channels, out_channels=internal_channels),
-            EncUnit(in_channels=internal_channels, out_channels=internal_channels),
             EncUnit(in_channels=internal_channels, out_channels=out_channels)
         )
 
@@ -374,7 +373,6 @@ class SynthesisTransformWithResBlocks(nn.Module):
         super().__init__()
         self.transform = nn.Sequential(
             DecUnit(in_channels=in_channels, out_channels=internal_channels),
-            DecUnit(in_channels=internal_channels, out_channels=internal_channels),
             DecUnit(in_channels=internal_channels, out_channels=internal_channels),
             DecUnit(in_channels=internal_channels, out_channels=out_channels)
         )

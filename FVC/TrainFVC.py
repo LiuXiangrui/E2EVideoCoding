@@ -42,15 +42,15 @@ class TrainerFVC(TrainerABC):
         intra_psnr = cal_psnr(intra_dist)
         intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, len(frames))]
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, num_available_frames)]
 
         rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
 
         # P frame coding
         for frame in inter_frames:
-            ref_frames_list = decode_frame_buffer.get_frames(num_frames=1 if stage == TrainingStage.WITHOUT_FUSION else max(len(decode_frame_buffer), 3))
+            ref_frames_list = decode_frame_buffer.get_frames(num_frames=1 if stage == TrainingStage.WITHOUT_FUSION else min(len(decode_frame_buffer), 3))
 
-            frame_hat, feats_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref_frames_list=ref_frames_list, fusion=(stage != TrainingStage.WITHOUT_FUSION))
+            frame_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref_frames_list=ref_frames_list, fusion=(stage != TrainingStage.WITHOUT_FUSION))
 
             recon_dist = self.distortion_metric(frame_hat, frame)
             recon_psnr = cal_psnr(recon_dist)
@@ -69,10 +69,10 @@ class TrainerFVC(TrainerABC):
 
             decode_frame_buffer.update(frame_hat)
 
-        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / (len(frames))
+        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / num_available_frames
 
         total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
-        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / (len(frames) + 1)
+        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / num_available_frames
 
         return {
             "rd_cost": rd_cost_avg,
@@ -97,34 +97,34 @@ class TrainerFVC(TrainerABC):
 
     def infer_stage(self, epoch: int) -> TrainingStage:
         epoch_milestone = self.args.epoch_milestone
-        if epoch < epoch_milestone[:1]:
+        assert len(epoch_milestone) == 2
+
+        if epoch < sum(epoch_milestone[:1]):
             stage = TrainingStage.WITHOUT_FUSION
         elif epoch < sum(epoch_milestone[:2]):
             stage = TrainingStage.WITH_FUSION
-        elif epoch < sum(epoch_milestone[:3]):
-            stage = TrainingStage.FINE_TUNE
         else:
             stage = TrainingStage.NOT_AVAILABLE
+        stage = TrainingStage.WITH_FUSION
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
         lr_milestone = self.args.lr_milestone
-        assert len(lr_milestone) == 3
+        assert len(lr_milestone) == 2
 
         params_w_o_fusion, _ = separate_aux_and_normal_params(self.inter_frame_codec, exclude_net=self.inter_frame_codec.post_processing)
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
 
         optimizers = {
             TrainingStage.WITHOUT_FUSION:  Adam([{'params': params_w_o_fusion, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
-            TrainingStage.WITH_FUSIONW: Adam([{'params': params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
-            TrainingStage.FINE_TUNE: Adam([{'params': params, 'initial_lr': lr_milestone[2]}], lr=lr_milestone[2])
+            TrainingStage.WITH_FUSION: Adam([{'params': params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
         }
 
         aux_optimizers = {
             TrainingStage.WITHOUT_FUSION: Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
-            TrainingStage.WITH_FUSIONW: Adam([{'params': aux_params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
-            TrainingStage.FINE_TUNE: Adam([{'params': aux_params, 'initial_lr': lr_milestone[2]}], lr=lr_milestone[2]),
+            TrainingStage.WITH_FUSION: Adam([{'params': aux_params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
         }
+
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:

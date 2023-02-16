@@ -1,0 +1,1 @@
+python TrainDVC.py --gpu --lambda_weight 1024 --dataset_root D:\\root --verbose --save_dir D:\\experiments

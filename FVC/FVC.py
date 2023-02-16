@@ -78,6 +78,9 @@ class InterFrameCodecFVC(nn.Module):
 
         return frame_hat
 
+    def aux_loss(self) -> torch.Tensor:
+        return self.motion_compression.aux_loss() + self.residues_compression.aux_loss()
+
 
 if __name__ == "__main__":
     a = InterFrameCodecFVC()

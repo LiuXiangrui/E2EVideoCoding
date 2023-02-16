@@ -38,7 +38,7 @@ class TrainerDCVC(TrainerABC):
         intra_psnr = cal_psnr(intra_dist)
         intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, len(frames))]
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, num_available_frames)]
 
         rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
 
@@ -65,10 +65,10 @@ class TrainerDCVC(TrainerABC):
 
             decode_frame_buffer.update(frame_hat)
 
-        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / (len(frames))
+        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / num_available_frames
 
         total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
-        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / (len(frames) + 1)
+        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / num_available_frames
 
         return {
             "rd_cost": rd_cost_avg,
@@ -92,15 +92,17 @@ class TrainerDCVC(TrainerABC):
                                         img_tensor=torch.stack(enc_results["pristine"], dim=1)[0].clone().detach().cpu())
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone
-        if epoch < epoch_milestone[:1]:
+        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
+        assert len(epoch_milestone) == 1
+
+        if epoch < sum(epoch_milestone[:1]):
             stage = TrainingStage.TRAIN
         else:
             stage = TrainingStage.NOT_AVAILABLE
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
-        lr_milestone = self.args.lr_milestone
+        lr_milestone = self.args.lr_milestone if isinstance(self.args.lr_milestone, list) else [self.args.lr_milestone, ]
         assert len(lr_milestone) == 1
 
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
@@ -115,7 +117,7 @@ class TrainerDCVC(TrainerABC):
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
-        lr_decay_milestone = self.args.lr_decay_milestone
+        lr_decay_milestone = self.args.lr_decay_milestone if isinstance(self.args.lr_decay_milestone, list) else [self.args.lr_decay_milestone, ]
 
         schedulers = {
             TrainingStage.TRAIN: MultiStepLR(optimizer=self.optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,

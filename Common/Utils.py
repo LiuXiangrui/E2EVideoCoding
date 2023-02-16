@@ -35,9 +35,9 @@ def parse_args():
     parser.add_argument("--checkpoints", type=str, help="checkpoints path")
     parser.add_argument("--pretrained", type=str, help="pretrained model path")
 
-    parser.add_argument("--epoch_milestone", type=list, default=[500, ], help="training epochs per stage")
-    parser.add_argument("--lr_milestone", type=list, default=[1e-4, ], help="learning rate for per stage")
-    parser.add_argument("--lr_decay_milestone", type=list, default=[100, 200, 300], help="learning rate decay milestone")
+    parser.add_argument("--epoch_milestone", type=int, nargs='+', default=500, help="training epochs per stage")
+    parser.add_argument("--lr_milestone", type=float, nargs='+', default=1e-4, help="learning rate for per stage")
+    parser.add_argument("--lr_decay_milestone", type=int, nargs='+', default=[100, 200, 300], help="learning rate decay milestone")
     parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="learning rate decay factor")
 
     parser.add_argument("--eval_epochs", type=int, default=1, help="interval of epochs for evaluation")
@@ -161,15 +161,17 @@ def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None
     parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
     aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
     fixed_parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and not p.requires_grad)
-    if exclude_net is not None:
-        excluded_parameters = set(n for n, p in exclude_net.named_parameters())
-        assert excluded_parameters <= parameters
-        parameters = parameters - excluded_parameters
-    params_dict = dict(net.named_parameters())
+
     inter_params = parameters & aux_parameters
     union_params = parameters | aux_parameters | fixed_parameters
+    params_dict = dict(net.named_parameters())
+
     assert len(inter_params) == 0
     assert len(union_params) - len(params_dict.keys()) == 0
+
+    if exclude_net is not None:
+        excluded_parameters = set("post_processing." + n for n, p in exclude_net.named_parameters())
+        parameters = parameters - (parameters & excluded_parameters)
 
     params = (params_dict[n] for n in sorted(list(parameters)))
     aux_params = (params_dict[n] for n in sorted(list(aux_parameters)))
