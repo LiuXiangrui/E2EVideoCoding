@@ -1,14 +1,17 @@
 from enum import Enum, unique
+import sys
 
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
-from torchvision.utils import make_grid
+
+from DVC import InterFrameCodecDVC
+
+sys.path.append("../Common/")
 
 from Common.Trainer import TrainerABC
 from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
-from DVC import InterFrameCodecDVC
 
 
 @unique

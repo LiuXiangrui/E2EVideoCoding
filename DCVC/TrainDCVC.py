@@ -1,10 +1,12 @@
+from enum import Enum, unique
+
 import torch
 import torch.nn as nn
-from enum import Enum, unique
-from Common.Trainer import TrainerABC
-from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
+
+from Common.Trainer import TrainerABC
+from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
 from DCVC import InterFrameCodecDCVC
 
 

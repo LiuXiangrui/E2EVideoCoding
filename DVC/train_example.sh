@@ -1,1 +1,1 @@
-python TrainDVC.py --gpu --lambda_weight 1024 --dataset_root D:\\root --verbose --save_dir D:\\experiments
+python TrainDVC.py --lambda_weight 1024 --gpu --batch_size 4 --intra_quality 3 --dataset_root D:\VideoDataset\Vimeo_Septuplet --epoch_milestone 500 --lr_milestone 1e-4 --lr_decay_milestone 100 200 300 --eval_epochs 1 --save_epochs 5 --save_dir D:\ExperimentsDVC --verbose

@@ -1,7 +1,10 @@
+import sys
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+sys.path.append("../../Common/")
 from Common.Utils import optical_flow_warp
 from Common.BasicBlock import ResBlock
 from Common.MotionEstimation import SpyNetOpticalFlowEst

@@ -1,5 +1,8 @@
+import sys
+
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
+sys.path.append("../../Common/")
 from Common.Compression import FactorizedCompression, HyperpriorCompression
 from Common.Compression import AnalysisTransform, SynthesisTransform
 from Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform

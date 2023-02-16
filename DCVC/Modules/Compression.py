@@ -1,9 +1,12 @@
+import sys
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from compressai.layers import MaskedConv2d, GDN
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
+sys.path.append("../../Common/")
 from Common.Compression import JointAutoregressiveCompression
 from Common.Compression import AnalysisTransform, SynthesisTransform
 from Common.Compression import ContextualAnalysisTransform, ContextualSynthesisTransform
