@@ -39,7 +39,7 @@ class TrainerDVC(TrainerABC):
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
-        intra_frame_hat = enc_results["x_hat"]
+        intra_frame_hat = torch.clamp(enc_results["x_hat"], min=0.0, max=1.0)
         decode_frame_buffer.update(intra_frame_hat)
 
         intra_dist = self.distortion_metric(intra_frame_hat, intra_frame)
@@ -118,12 +118,14 @@ class TrainerDVC(TrainerABC):
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                      tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
         if self.train_steps % 2000 == 0:
+            assert len(enc_results["pristine"]) == len(enc_results["reconstruction"]) and len(enc_results["pristine"]) == len(enc_results["prediction"])
+
             for i in range(len(enc_results["pristine"])):
                 self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
                                             img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())
                 self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
                                             img_tensor=enc_results["pristine"][i].clone().detach().cpu())
-                self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
+                self.tensorboard.add_images(tag="Training/Prediction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
                                             img_tensor=enc_results["prediction"][i].clone().detach().cpu())
 
     def lr_decay(self, stage: TrainingStage) -> None:

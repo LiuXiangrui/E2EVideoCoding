@@ -21,7 +21,7 @@ class Vimeo90KDataset(Dataset):
     def __getitem__(self, index) -> torch.Tensor:
         frames_path = [os.path.join(self.seq_list[index], "im{0}.png".format(str(i))) for i in range(1, self.num_available_frames + 1)]
 
-        frames = torch.stack([self.to_tensor(Image.open(frame).convert("RGB"))[:, :512, :512] for frame in frames_path], dim=0)
+        frames = torch.stack([self.to_tensor(Image.open(frame).convert("RGB")) for frame in frames_path], dim=0)
 
         if self.transform:
             return self.transform(frames)

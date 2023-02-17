@@ -33,7 +33,7 @@ class TrainerDCVC(TrainerABC):
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
-        intra_frame_hat = enc_results["x_hat"]
+        intra_frame_hat = torch.clamp(enc_results["x_hat"], min=0.0, max=1.0)
         decode_frame_buffer.update(intra_frame_hat)
 
         intra_dist = self.distortion_metric(intra_frame_hat, intra_frame)

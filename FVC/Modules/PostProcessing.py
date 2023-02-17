@@ -11,14 +11,14 @@ class NonlocalAttentionFVC(nn.Module):
         self.phi = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=1)
 
     def forward(self, cur: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = cur.shape
+        batch, channels, height, width = cur.shape
 
-        x = self.theta(ref).view(B, C, -1).permute(0, 2, 1)  # shape (B, H * W, C)
-        y = self.phi(cur).view(B, C, -1)  # shape (B, C, H * W)
+        x = self.theta(ref).view(batch, channels, -1).permute(0, 2, 1)  # shape (B, H * W, C)
+        y = self.phi(cur).view(batch, channels, -1)  # shape (B, C, H * W)
 
         attn = F.softmax(torch.matmul(x, y), dim=1)  # shape (B, H * W, H * W)
 
-        z = torch.matmul(attn, x).permute(0, 2, 1).view(B, C, H, W)
+        z = torch.matmul(attn, x).permute(0, 2, 1).view(batch, channels, height, width)
 
         return self.W(z)
 
