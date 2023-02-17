@@ -87,7 +87,7 @@ class TrainerDCVC(TrainerABC):
                                      tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"]})
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                      tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
-        if self.train_steps % 100 == 0:
+        if self.train_steps % 1000 == 0:
             for i in range(len(enc_results["pristine"])):
                 self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
                                             img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())

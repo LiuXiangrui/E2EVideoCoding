@@ -30,11 +30,10 @@ class SpyNetOpticalFlowEst(nn.Module):
         self.scale_levels = 4
         self.net = nn.ModuleList([SpyNetBasicBlock() for _ in range(self.scale_levels)])
         self.load_pretrained_model()
-        self.fix_parameters()
 
     @torch.no_grad()
     def forward(self, cur_frame: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
-        B, _, _, _ = cur_frame.shape
+        batch, _, _, _ = cur_frame.shape
         multiscale_cur_frame = [cur_frame.clone(), ]
         multiscale_ref_frame = [ref.clone(), ]
         for level in range(1, self.scale_levels):
@@ -42,7 +41,7 @@ class SpyNetOpticalFlowEst(nn.Module):
             multiscale_ref_frame.append(F.avg_pool2d(multiscale_ref_frame[level - 1], kernel_size=2, stride=2))
 
         shape_last_scale = multiscale_ref_frame[-1].size()
-        optical_flow = torch.zeros(size=[B, 2, shape_last_scale[2] // 2, shape_last_scale[3] // 2],
+        optical_flow = torch.zeros(size=[batch, 2, shape_last_scale[2] // 2, shape_last_scale[3] // 2],
                                    dtype=cur_frame.dtype, device=cur_frame.device)
         for level in range(self.scale_levels, 0, -1):
             upsampled_optical_flow = F.interpolate(optical_flow, scale_factor=(2, 2), mode="bilinear") * 2.0
@@ -56,14 +55,8 @@ class SpyNetOpticalFlowEst(nn.Module):
         return offset
 
     def load_pretrained_model(self):
-        model_weights = torch.hub.load_state_dict_from_url(url='http://content.sniklaus.com/github/pytorch-spynet/'
-                                                               'network-sintel-final.pytorch',
+        model_weights = torch.hub.load_state_dict_from_url(url='http://content.sniklaus.com/github/pytorch-spynet/network-sintel-final.pytorch',
                                                            file_name='spynet-sintel-final')
 
         model_weights = {key.replace('moduleBasic', 'net'): weight for key, weight in model_weights.items()}
         self.load_state_dict(model_weights, strict=False)
-
-    def fix_parameters(self):
-        for p in self.parameters():
-            p.requires_grad = False
-        self.eval()

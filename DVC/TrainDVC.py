@@ -16,19 +16,22 @@ from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_a
 
 @unique
 class TrainingStage(Enum):
-    TRAIN = 0,
-    NOT_AVAILABLE = 1
+    WITH_INTER_LOSS = 0
+    ONLY_RD_LOSS = 1
+    ROLLING = 2
+    NOT_AVAILABLE = 3
 
 
 class TrainerDVC(TrainerABC):
     def __init__(self, inter_frame_codec: nn.Module) -> None:
         super().__init__(inter_frame_codec=inter_frame_codec)
+        self.record.add_item("align_psnr")
         self.record.add_item("pred_psnr")
 
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         decode_frame_buffer = DecodedFrameBuffer()
 
-        num_available_frames = 2
+        num_available_frames = 7 if stage == TrainingStage.ROLLING else 2
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
@@ -47,13 +50,16 @@ class TrainerDVC(TrainerABC):
 
         prediction = [torch.zeros_like(intra_frame_hat), ]
 
-        rd_cost_avg = aux_loss_avg = pred_psnr_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
+        rd_cost_avg = aux_loss_avg = align_psnr_avg = pred_psnr_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
 
         # P frame coding
         for frame in inter_frames:
             ref = decode_frame_buffer.get_frames(num_frames=1)[0]
 
-            frame_hat, pred, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
+            frame_hat, aligned_ref, pred, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
+
+            align_dist = self.distortion_metric(aligned_ref, frame)
+            align_psnr = cal_psnr(align_dist)
 
             pred_dist = self.distortion_metric(pred, frame)
             pred_psnr = cal_psnr(pred_dist)
@@ -64,13 +70,20 @@ class TrainerDVC(TrainerABC):
             motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
             frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
 
-            rd_cost = self.args.lambda_weight * recon_dist + frame_bpp + motion_bpp
+            rate = frame_bpp + motion_bpp
+            distortion = 0.1 * (align_dist + pred_dist) + recon_dist if stage == TrainingStage.WITH_INTER_LOSS else recon_dist
+
+            rd_cost = self.args.lambda_weight * distortion + rate
+
             aux_loss = self.inter_frame_codec.aux_loss()
 
             rd_cost_avg += rd_cost / len(inter_frames)
             aux_loss_avg += aux_loss / len(inter_frames)
+
             recon_psnr_avg_inter += recon_psnr / len(inter_frames)
+            align_psnr_avg += align_psnr / len(inter_frames)
             pred_psnr_avg += pred_psnr / len(inter_frames)
+
             frame_bpp_avg += frame_bpp / len(inter_frames)
             motion_bpp_avg += motion_bpp / len(inter_frames)
 
@@ -86,7 +99,10 @@ class TrainerDVC(TrainerABC):
         return {
             "rd_cost": rd_cost_avg,
             "aux_loss": aux_loss_avg,
-            "pred_psnr": pred_psnr_avg, "recon_psnr_inter": recon_psnr_avg_inter, "recon_psnr": recon_psnr_avg,
+            "align_psnr": align_psnr_avg,
+            "pred_psnr": pred_psnr_avg,
+            "recon_psnr_inter": recon_psnr_avg_inter,
+            "recon_psnr": recon_psnr_avg,
             "motion_bpp": motion_bpp_avg, "frame_bpp": frame_bpp_avg,
             "total_bpp_inter": total_bpp_avg_inter, "total_bpp": total_bpp_avg,
             "reconstruction": decode_frame_buffer.get_frames(num_frames=num_available_frames),
@@ -96,10 +112,12 @@ class TrainerDVC(TrainerABC):
 
     def visualize(self, enc_results: dict, stage: TrainingStage) -> None:
         self.tensorboard.add_scalars(main_tag="Training/PSNR", global_step=self.train_steps,
-                                     tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"], "Prediction": enc_results["pred_psnr"]})
+                                     tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"],
+                                                      "Prediction": enc_results["pred_psnr"],
+                                                      "Alignment": enc_results["align_psnr"]})
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                      tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
-        if self.train_steps % 100 == 0:
+        if self.train_steps % 2000 == 0:
             for i in range(len(enc_results["pristine"])):
                 self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
                                             img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())
@@ -114,12 +132,9 @@ class TrainerDVC(TrainerABC):
 
     def infer_stage(self, epoch: int) -> TrainingStage:
         epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
-        assert len(epoch_milestone) == 1
-
-        if epoch < sum(epoch_milestone[:1]):
-            stage = TrainingStage.TRAIN
-        else:
-            stage = TrainingStage.NOT_AVAILABLE
+        assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
+        epoch_interval = [sum(epoch_milestone[:i]) - epoch > 0 for i in range(1, len(epoch_milestone) + 1)]
+        stage = TrainingStage(epoch_interval.index(True))
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
@@ -128,26 +143,40 @@ class TrainerDVC(TrainerABC):
 
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
 
+        optimizer = Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
+        aux_optimizer = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0])
+
         optimizers = {
-            TrainingStage.TRAIN: Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
+            TrainingStage.WITH_INTER_LOSS: optimizer,
+            TrainingStage.ONLY_RD_LOSS: optimizer,
+            TrainingStage.ROLLING: optimizer
         }
 
         aux_optimizers = {
-            TrainingStage.TRAIN: Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
+            TrainingStage.WITH_INTER_LOSS: aux_optimizer,
+            TrainingStage.ONLY_RD_LOSS: aux_optimizer,
+            TrainingStage.ROLLING: aux_optimizer
         }
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
         lr_decay_milestone = self.args.lr_decay_milestone if isinstance(self.args.lr_decay_milestone, list) else [self.args.lr_decay_milestone, ]
 
+        scheduler = MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
+                                milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+        aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
+                                    milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+
         schedulers = {
-            TrainingStage.TRAIN: MultiStepLR(optimizer=self.optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,
-                                             milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+            TrainingStage.WITH_INTER_LOSS: scheduler,
+            TrainingStage.ONLY_RD_LOSS: scheduler,
+            TrainingStage.ROLLING: scheduler
         }
 
         aux_schedulers = {
-            TrainingStage.TRAIN: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.TRAIN], last_epoch=start_epoch - 1,
-                                             milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+            TrainingStage.WITH_INTER_LOSS: aux_scheduler,
+            TrainingStage.ONLY_RD_LOSS: aux_scheduler,
+            TrainingStage.ROLLING: aux_scheduler
         }
 
         return schedulers, aux_schedulers

@@ -47,9 +47,9 @@ class MotionCompensation(nn.Module):
         self.pred_refine = PredRefine()
 
     def forward(self, ref: torch.Tensor, motion_fields: torch.Tensor) -> torch.Tensor:
-        pred = optical_flow_warp(ref, motion_fields=motion_fields)
-        pred = self.pred_refine(pred, ref=ref, motion_fields=motion_fields)
-        return pred
+        aligned_ref = optical_flow_warp(ref, motion_fields=motion_fields)
+        pred = self.pred_refine(aligned_ref, ref=ref, motion_fields=motion_fields)
+        return aligned_ref, pred
 
 
 MotionEstimation = SpyNetOpticalFlowEst
