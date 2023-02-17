@@ -165,3 +165,7 @@ dmypy.json
 
 # macOS dir files
 .DS_Store
+/Test/Encoders/EncoderApp.exe
+/Test/Encoders/DecoderApp.exe
+/Test/Encoders/TAppDecoder.exe
+/Test/Encoders/TAppEncoder.exe
