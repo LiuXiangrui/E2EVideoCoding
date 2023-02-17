@@ -1,0 +1,47 @@
+{
+    "base_path": "D:\\VideoDataset\\HEVC_CTC\\Class_B",
+    "sequences": {
+        "BQTerrace_1920x1080_60": {
+            "FramesToBeEncoded": 600,
+            "LastValidFrame": 599,
+            "GOPSize": 10,
+            "FrameRate": 60,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "BasketballDrive_1920x1080_50": {
+            "FramesToBeEncoded": 500,
+            "LastValidFrame": 499,
+            "GOPSize": 10,
+            "FrameRate": 50,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "Cactus_1920x1080_50": {
+            "FramesToBeEncoded": 500,
+            "GOPSize": 10,
+            "FrameRate": 50,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "Kimono1_1920x1080_24": {
+            "FramesToBeEncoded": 240,
+            "GOPSize": 10,
+            "FrameRate": 24,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4
+        },
+        "ParkScene_1920x1080_24": {
+            "FramesToBeEncoded": 240,
+            "GOPSize": 10,
+            "FrameRate": 24,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4
+        }
+    }
+}

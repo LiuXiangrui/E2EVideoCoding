@@ -1,0 +1,40 @@
+{
+    "base_path": "D:\\VideoDataset\\HEVC_CTC\\Class_D",
+    "sequences": {
+        "BasketballPass_416x240_50": {
+            "FramesToBeEncoded": 500,
+            "LastValidFrame": 499,
+            "GOPSize": 10,
+            "FrameRate": 50,
+            "SourceWidth": 416,
+            "SourceHeight": 240,
+            "Level": 2.1
+        },
+        "BlowingBubbles_416x240_50": {
+            "FramesToBeEncoded": 500,
+            "LastValidFrame": 499,
+            "GOPSize": 10,
+            "FrameRate": 50,
+            "SourceWidth": 416,
+            "SourceHeight": 240,
+            "Level": 2.1
+        },
+        "BQSquare_416x240_60": {
+            "FramesToBeEncoded": 600,
+            "LastValidFrame": 599,
+            "GOPSize": 10,
+            "FrameRate": 60,
+            "SourceWidth": 416,
+            "SourceHeight": 240,
+            "Level": 2.1
+        },
+        "RaceHorses_416x240_30": {
+            "FramesToBeEncoded": 300,
+            "GOPSize": 10,
+            "FrameRate": 30,
+            "SourceWidth": 416,
+            "SourceHeight": 240,
+            "Level": 2
+        }
+    }
+}

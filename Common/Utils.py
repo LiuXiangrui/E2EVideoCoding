@@ -3,14 +3,12 @@ import datetime
 import logging
 import math
 from pathlib import Path
-from typing import Union
 
 import torch
 from prettytable import PrettyTable
 from torch import nn as nn
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
-
 
 SCALES_MIN = 0.11
 SCALES_MAX = 256
@@ -129,7 +127,7 @@ class DecodedFrameBuffer:
         super().__init__()
         self.frame_buffer = list()
 
-    def get_frames(self, num_frames: int = 1) -> Union[list, torch.Tensor]:
+    def get_frames(self, num_frames: int = 1) -> list:
         assert 1 <= num_frames <= len(self.frame_buffer)
         return self.frame_buffer[-num_frames:]
 
@@ -180,13 +178,13 @@ def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None
 
 
 def optical_flow_warp(x: torch.Tensor, motion_fields: torch.Tensor) -> torch.Tensor:
-    B, C, H, W = motion_fields.shape
-    axis_hor = torch.linspace(-1.0, 1.0, W).view(1, 1, 1, W).expand(B, -1, H, -1)
-    axis_ver = torch.linspace(-1.0, 1.0, H).view(1, 1, H, 1).expand(B, -1, -1, W)
+    batch, channels, height, width = motion_fields.shape
+    axis_hor = torch.linspace(-1.0, 1.0, width).view(1, 1, 1, width).expand(batch, -1, height, -1)
+    axis_ver = torch.linspace(-1.0, 1.0, height).view(1, 1, height, 1).expand(batch, -1, -1, width)
     grid = torch.cat([axis_hor, axis_ver], dim=1).to(motion_fields.device)
 
-    motion_fields = torch.cat([motion_fields[:, 0:1, :, :] / ((W - 1.0) / 2.0),
-                               motion_fields[:, 1:2, :, :] / ((H - 1.0) / 2.0)], dim=1)
+    motion_fields = torch.cat([motion_fields[:, 0:1, :, :] / ((width - 1.0) / 2.0),
+                               motion_fields[:, 1:2, :, :] / ((height - 1.0) / 2.0)], dim=1)
 
     warped_x = F.grid_sample(input=x, grid=(grid + motion_fields).permute(0, 2, 3, 1),
                              mode="bilinear", padding_mode="border", align_corners=False)

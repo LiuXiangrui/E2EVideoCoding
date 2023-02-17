@@ -34,7 +34,7 @@ class TrainerFVC(TrainerABC):
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
-        intra_frame_hat = enc_results["x_hat"]
+        intra_frame_hat = torch.clamp(enc_results["x_hat"], min=0.0, max=1.0)
 
         decode_frame_buffer.update(intra_frame_hat)
 
@@ -97,16 +97,10 @@ class TrainerFVC(TrainerABC):
                                             img_tensor=enc_results["pristine"][i].clone().detach().cpu())
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone
-        assert len(epoch_milestone) == 2
-
-        if epoch < sum(epoch_milestone[:1]):
-            stage = TrainingStage.WITHOUT_FUSION
-        elif epoch < sum(epoch_milestone[:2]):
-            stage = TrainingStage.WITH_FUSION
-        else:
-            stage = TrainingStage.NOT_AVAILABLE
-        stage = TrainingStage.WITH_FUSION
+        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
+        assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
+        epoch_interval = [sum(epoch_milestone[:i]) - epoch > 0 for i in range(1, len(epoch_milestone) + 1)]
+        stage = TrainingStage(epoch_interval.index(True))
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
