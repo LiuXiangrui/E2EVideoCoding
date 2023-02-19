@@ -167,5 +167,5 @@ dmypy.json
 .DS_Store
 /Test/Encoders/EncoderApp.exe
 /Test/Encoders/DecoderApp.exe
-/Test/Encoders/TAppDecoder.exe
-/Test/Encoders/TAppEncoder.exe
+/Test/HEVC/TAppDecoder.exe
+/Test/HEVC/TAppEncoder.exe
