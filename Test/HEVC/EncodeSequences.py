@@ -6,11 +6,11 @@ qp_list = [22, 27, 32, 37]
 
 results_folder = r"D:\Traditional"
 
-enc_cfg_prefix = r".\Config\Encoders\encoder_lowdelay_P_main"
-seq_cfg_folder = r".\Config\Sequences"
+enc_cfg_prefix = r"encoder_lowdelay_P_main"
+seq_cfg_folder = r"C:\Users\xiangrliu3\Desktop\E2EVideoCoding\Test\Config\seq2"
 
-encoder_path = r".\Encoders\TAppEncoder.exe"
-decoder_path = r".\Encoders\TAppDecoder.exe"
+encoder_path = r"TAppEncoder.exe"
+decoder_path = r"TAppDecoder.exe"
 
 
 def construct_cmds(qp_: int):

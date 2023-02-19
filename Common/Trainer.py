@@ -11,6 +11,9 @@ from tqdm import tqdm
 from Common.Dataset import Vimeo90KDataset
 from Common.Utils import Record, init
 
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
+
 
 class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
