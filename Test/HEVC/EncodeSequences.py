@@ -40,7 +40,7 @@ def construct_cmds(qp_: int):
                 gop_size = str(seq_cfg["GOPSize"])
                 enc_cfg_path = enc_cfg_prefix + "_GOP_{}.cfg".format(gop_size)
 
-                args = {
+                enc_args = {
                     "InputFile": seq_path,
                     "BitstreamFile": bin_path,
                     "ReconFile": rec_seq_path,
@@ -55,11 +55,11 @@ def construct_cmds(qp_: int):
                 }
 
                 if "LastValidFrame" in seq_cfg:
-                    args["LastValidFrame"] = seq_cfg["LastValidFrame"]
+                    enc_args["LastValidFrame"] = seq_cfg["LastValidFrame"]
 
                 enc_cmd = "{} -c {}".format(str(encoder_path), str(enc_cfg_path))
 
-                for key, value in args.items():
+                for key, value in enc_args.items():
                     enc_cmd += " --{}={}".format(str(key), str(value))
 
                 enc_cmd += " > {}".format(str(results_path))
