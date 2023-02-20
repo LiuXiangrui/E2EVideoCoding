@@ -6,12 +6,12 @@ from Modules import MotionCompression, ResiduesCompression
 
 
 class InterFrameCodecDVC(nn.Module):
-    def __init__(self):
+    def __init__(self, N_motion: int = 128, M_motion: int = 128, N_residues: int = 128, M_residues: int = 192):
         super().__init__()
         self.motion_est = MotionEstimation()
         self.motion_comp = MotionCompensation()
-        self.residues_compression = ResiduesCompression()
-        self.motion_compression = MotionCompression()
+        self.motion_compression = MotionCompression(N=N_motion, M=M_motion)
+        self.residues_compression = ResiduesCompression(N=N_residues, M=M_residues)
 
     def forward(self, frame: torch.Tensor, ref: torch.Tensor) -> tuple:
         motion_fields = self.motion_est(frame, ref=ref)
@@ -21,8 +21,6 @@ class InterFrameCodecDVC(nn.Module):
         motion_likelihoods = enc_results["likelihoods"]
 
         aligned_ref, pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
-        aligned_ref = torch.clamp(aligned_ref, min=0.0, max=1.0)
-        pred = torch.clamp(pred, min=0.0, max=1.0)
 
         residues = frame - pred
 
@@ -61,6 +59,7 @@ class InterFrameCodecDVC(nn.Module):
         motion_fields_hat = self.motion_compression.decompress(strings=motion_strings, shape=motion_hyper_shape)["x_hat"]
 
         _, pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
+        pred = torch.clamp(pred, min=0.0, max=1.0)
 
         residues_hat = self.residues_compression.decompress(strings=frame_strings, shape=frame_hyper_shape)["x_hat"]
 

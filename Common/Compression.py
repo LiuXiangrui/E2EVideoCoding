@@ -5,7 +5,7 @@ from compressai.layers import GDN
 from compressai.models import CompressionModel
 from torch import nn as nn
 
-from Common.BasicBlock import ResBlock, EncUnit, DecUnit
+from Common.BasicBlock import SubPixelConv, ResBlock, EncUnit, DecUnit
 
 
 class FactorizedCompression(CompressionModel):
@@ -294,19 +294,15 @@ class ContextualSynthesisTransform(nn.Module):
     def __init__(self, in_channels: int, ctx_channels: int, internal_channels: int, out_channels: int, kernel_size: int = 3):
         super().__init__()
         self.transform = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=internal_channels * 4, kernel_size=kernel_size, stride=1, padding=kernel_size // 2),
-            nn.PixelShuffle(upscale_factor=2),
+            SubPixelConv(in_channels=in_channels, out_channels=internal_channels, upscale_factor=2),
             GDN(in_channels=internal_channels, inverse=True),
-            nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels * 4, kernel_size=kernel_size, stride=1, padding=kernel_size // 2),
-            nn.PixelShuffle(upscale_factor=2),
+            SubPixelConv(in_channels=internal_channels, out_channels=internal_channels, upscale_factor=2),
             GDN(in_channels=internal_channels, inverse=True),
             ResBlock(channels=internal_channels, activation=nn.LeakyReLU, tail_act=True, negative_slope=0.1),
-            nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels * 4, kernel_size=kernel_size, stride=1, padding=kernel_size // 2),
-            nn.PixelShuffle(upscale_factor=2),
+            SubPixelConv(in_channels=internal_channels, out_channels=internal_channels, upscale_factor=2),
             GDN(in_channels=internal_channels, inverse=True),
             ResBlock(channels=internal_channels, activation=nn.LeakyReLU, tail_act=True, negative_slope=0.1),
-            nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels * 4, kernel_size=kernel_size, stride=1, padding=kernel_size // 2),
-            nn.PixelShuffle(upscale_factor=2)
+            SubPixelConv(in_channels=internal_channels, out_channels=internal_channels, upscale_factor=2)
         )
 
         self.contextual_transform = nn.Sequential(

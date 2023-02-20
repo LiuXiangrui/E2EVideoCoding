@@ -30,11 +30,11 @@ class MotionRefine(nn.Module):
 
 
 class RefRefine(nn.Module):
-    def __init__(self):
+    def __init__(self, N: int = 64):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),
-            ResBlock(channels=64, activation=nn.ReLU, head_act=True)
+            nn.Conv2d(in_channels=3, out_channels=N, kernel_size=3, stride=1, padding=1),
+            ResBlock(channels=N, activation=nn.ReLU, head_act=True)
         )
 
     def forward(self, ref: torch.Tensor):
@@ -42,11 +42,11 @@ class RefRefine(nn.Module):
 
 
 class PredRefine(nn.Module):
-    def __init__(self):
+    def __init__(self, N: int = 64):
         super().__init__()
         self.net = nn.Sequential(
-            ResBlock(channels=64, activation=nn.ReLU, head_act=True),
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
+            ResBlock(channels=N, activation=nn.ReLU, head_act=True),
+            nn.Conv2d(in_channels=N, out_channels=N, kernel_size=3, stride=1, padding=1)
         )
 
     def forward(self, pred: torch.Tensor):
@@ -54,11 +54,11 @@ class PredRefine(nn.Module):
 
 
 class MotionCompensation(nn.Module):
-    def __init__(self):
+    def __init__(self, N: int = 64):
         super().__init__()
         self.motion_refine = MotionRefine()
-        self.ref_refine = RefRefine()
-        self.pred_refine = PredRefine()
+        self.ref_refine = RefRefine(N=N)
+        self.pred_refine = PredRefine(N=N)
 
     def forward(self, ref: torch.Tensor, motion_fields: torch.Tensor) -> torch.Tensor:
         pred = optical_flow_warp(self.ref_refine(ref), motion_fields=self.motion_refine(motion_fields, ref=ref))

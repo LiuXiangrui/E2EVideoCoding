@@ -14,49 +14,49 @@ from Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
 
 
 class MotionCompression(JointAutoregressiveCompression):
-    def __init__(self, latents_channels: int = 128, hyper_channels: int = 64):
+    def __init__(self, N: int = 64, M: int = 128):
         super().__init__()
-        self.analysis_transform = AnalysisTransform(in_channels=2, internal_channels=128, out_channels=latents_channels, kernel_size=3)
-        self.synthesis_transform = SynthesisTransform(in_channels=latents_channels, internal_channels=128, out_channels=2, kernel_size=3)
-        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=128, internal_channels=64, out_channels=64)
-        self.hyper_synthesis_transform = HyperSynthesisTransform(channels=[64, 64, 96, 256])
+        self.analysis_transform = AnalysisTransform(in_channels=2, internal_channels=M, out_channels=M, kernel_size=3)
+        self.synthesis_transform = SynthesisTransform(in_channels=M, internal_channels=M, out_channels=2, kernel_size=3)
+        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(channels=[N, N, N * 3 // 2, M * 2])
         self.entropy_parameters = nn.Sequential(
-            nn.Conv2d(in_channels=512, out_channels=426, kernel_size=1),
+            nn.Conv2d(in_channels=M * 12 // 3, out_channels=M * 10 // 3, kernel_size=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=426, out_channels=341, kernel_size=1),
+            nn.Conv2d(in_channels=M * 10 // 3, out_channels=M * 8 // 3, kernel_size=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=341, out_channels=256, kernel_size=1)
+            nn.Conv2d(in_channels=M * 8 // 3, out_channels=M * 6 // 3, kernel_size=1)
         )
-        self.context_prediction = MaskedConv2d(in_channels=128, out_channels=256, kernel_size=5, padding=2, stride=1)
-        self.entropy_bottleneck = EntropyBottleneck(channels=hyper_channels)
+        self.context_prediction = MaskedConv2d(in_channels=M, out_channels=M * 2, kernel_size=5, padding=2, stride=1)
+        self.entropy_bottleneck = EntropyBottleneck(channels=N)
         self.gaussian_conditional = GaussianConditional(None)
 
 
 class ContextualCompression(JointAutoregressiveCompression):
-    def __init__(self):
+    def __init__(self, N: int = 64, M: int = 96):
         super().__init__()
-        self.analysis_transform = ContextualAnalysisTransform(in_channels=3, ctx_channels=64, internal_channels=64, out_channels=96, kernel_size=5)
-        self.synthesis_transform = ContextualSynthesisTransform(in_channels=96, ctx_channels=64, internal_channels=64, out_channels=3, kernel_size=5)
-        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=96, internal_channels=64, out_channels=64)
-        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=64, internal_channels=64, out_channels=96)
+        self.analysis_transform = ContextualAnalysisTransform(in_channels=3, ctx_channels=N, internal_channels=N, out_channels=M, kernel_size=5)
+        self.synthesis_transform = ContextualSynthesisTransform(in_channels=M, ctx_channels=N, internal_channels=N, out_channels=3, kernel_size=5)
+        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M)
         self.entropy_parameters = nn.Sequential(
-            nn.Conv2d(in_channels=384, out_channels=320, kernel_size=1),
+            nn.Conv2d(in_channels=M * 12 // 3, out_channels=M * 10 // 3, kernel_size=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=320, out_channels=256, kernel_size=1),
+            nn.Conv2d(in_channels=M * 10 // 3, out_channels=M * 8 // 3, kernel_size=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=256, out_channels=192, kernel_size=1)
+            nn.Conv2d(in_channels=M * 8 // 3, out_channels=M * 6 // 3, kernel_size=1)
         )
         self.temporal_prior_encoder = nn.Sequential(
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=5, stride=2, padding=2),
-            GDN(in_channels=64),
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=5, stride=2, padding=2),
-            GDN(in_channels=64),
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=5, stride=2, padding=2),
-            GDN(in_channels=64),
-            nn.Conv2d(in_channels=64, out_channels=96, kernel_size=5, stride=2, padding=2),
+            nn.Conv2d(in_channels=N, out_channels=N, kernel_size=5, stride=2, padding=2),
+            GDN(in_channels=N),
+            nn.Conv2d(in_channels=N, out_channels=N, kernel_size=5, stride=2, padding=2),
+            GDN(in_channels=N),
+            nn.Conv2d(in_channels=N, out_channels=N, kernel_size=5, stride=2, padding=2),
+            GDN(in_channels=N),
+            nn.Conv2d(in_channels=N, out_channels=M, kernel_size=5, stride=2, padding=2),
         )
-        self.context_prediction = MaskedConv2d(in_channels=96, out_channels=192, kernel_size=5, padding=2, stride=1)
-        self.entropy_bottleneck = EntropyBottleneck(channels=64)
+        self.context_prediction = MaskedConv2d(in_channels=M, out_channels=M * 2, kernel_size=5, padding=2, stride=1)
+        self.entropy_bottleneck = EntropyBottleneck(channels=N)
         self.gaussian_conditional = GaussianConditional(None)
 
     def forward(self, x: torch.Tensor, ctx: torch.Tensor = None) -> dict:

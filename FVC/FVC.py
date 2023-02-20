@@ -8,13 +8,13 @@ from Modules import ResiduesCompression, MotionCompression
 
 
 class InterFrameCodecFVC(nn.Module):
-    def __init__(self):
+    def __init__(self, N: int = 128, M: int = 128):
         super().__init__()
         self.feats_extraction = EncUnit(in_channels=3, out_channels=64)
         self.motion_est = MotionEstimation()
         self.motion_comp = MotionCompensation()
-        self.residues_compression = ResiduesCompression()
-        self.motion_compression = MotionCompression()
+        self.motion_compression = MotionCompression(N=N, M=M)
+        self.residues_compression = ResiduesCompression(N=N, M=M)
         self.frame_reconstruction = DecUnit(in_channels=64, out_channels=3)
         self.post_processing = MultiFrameFeatsFusion(motion_est=self.motion_est, motion_comp=self.motion_comp)
 
@@ -38,7 +38,6 @@ class InterFrameCodecFVC(nn.Module):
             feats_hat = self.post_processing(feats, ref_feats_list=ref_feats_list)
 
         frame_hat = self.frame_reconstruction(feats_hat)
-        frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
 
         return frame_hat, residues_likelihoods, motion_likelihoods
 

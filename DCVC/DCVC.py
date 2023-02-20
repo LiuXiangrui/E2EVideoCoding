@@ -6,12 +6,12 @@ from Modules import ContextualCompression, MotionCompression
 
 
 class InterFrameCodecDCVC(nn.Module):
-    def __init__(self):
+    def __init__(self, N_motion: int = 64, M_motion: int = 128, N_frame: int = 64, M_frame: int = 96):
         super().__init__()
         self.motion_est = MotionEstimation()
-        self.motion_comp = MotionCompensation()
-        self.contextual_compression = ContextualCompression()
-        self.motion_compression = MotionCompression()
+        self.motion_comp = MotionCompensation(N=N_frame)
+        self.motion_compression = MotionCompression(N=N_motion, M=M_motion)
+        self.contextual_compression = ContextualCompression(N=N_frame, M=M_frame)
 
     def forward(self, frame: torch.Tensor, ref: torch.Tensor):
         with torch.no_grad():
@@ -26,7 +26,6 @@ class InterFrameCodecDCVC(nn.Module):
         enc_results = self.contextual_compression(frame, ctx=pred)
         frame_likelihoods = enc_results["likelihoods"]
         frame_hat = enc_results["x_hat"]
-        frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
 
         return frame_hat, motion_likelihoods, frame_likelihoods
 
