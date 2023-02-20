@@ -1,8 +1,7 @@
-from enum import Enum, unique
 import sys
+from enum import Enum, unique
 
 import torch
-import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 
@@ -23,10 +22,9 @@ class TrainingStage(Enum):
 
 
 class TrainerDVC(TrainerABC):
-    def __init__(self, inter_frame_codec: nn.Module) -> None:
-        super().__init__(inter_frame_codec=inter_frame_codec)
-        self.record.add_item("align_psnr")
-        self.record.add_item("pred_psnr")
+    def __init__(self) -> None:
+        super().__init__()
+        self.inter_frame_codec = InterFrameCodecDVC(N_motion=self.args.N_motion, M_motion=self.args.M_motion, N_residues=self.args.N_residues, M_residues=self.args.M_residues)
 
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         decode_frame_buffer = DecodedFrameBuffer()
@@ -185,5 +183,5 @@ class TrainerDVC(TrainerABC):
 
 
 if __name__ == "__main__":
-    trainer = TrainerDVC(inter_frame_codec=InterFrameCodecDVC)
+    trainer = TrainerDVC()
     trainer.train()

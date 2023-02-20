@@ -1,0 +1,29 @@
+{
+  "Network":
+  {
+    "N_motion": 128,
+    "M_motion": 128,
+    "N_residues": 128,
+    "M_residues": 192
+  },
+  "Training":
+  {
+    "gpu": true,
+    "lambda_weight": 1024,
+    "batch_size": 4,
+    "intra_quality": 5,
+    "dataset_root": "./Dataset",
+    "checkpoints": "example",
+    "epoch_milestone": [500],
+    "lr_milestone": [1e-4],
+    "lr_decay_milestone": [100, 200, 300],
+    "eval_epochs": 1,
+    "save_epochs": 5,
+    "save_directory": "./Experiments",
+    "verbose": true,
+    "record_items": [
+      "rd_cost",
+      "recon_psnr", "recon_psnr_inter", "align_psnr", "pred_psnr",
+      "motion_bpp", "frame_bpp", "total_bpp", "total_bpp_inter"]
+  }
+}

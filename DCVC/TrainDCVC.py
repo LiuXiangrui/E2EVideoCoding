@@ -1,7 +1,6 @@
 from enum import Enum, unique
 
 import torch
-import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 
@@ -17,8 +16,9 @@ class TrainingStage(Enum):
 
 
 class TrainerDCVC(TrainerABC):
-    def __init__(self, inter_frame_codec: nn.Module) -> None:
-        super().__init__(inter_frame_codec=inter_frame_codec)
+    def __init__(self) -> None:
+        super().__init__()
+        self.inter_frame_codec = InterFrameCodecDCVC(N_motion=self.args.N_motion, M_motion=self.args.M_motion, N_frame=self.args.N_frame, M_frame=self.args.M_frame)
 
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         assert stage != TrainingStage.NOT_AVAILABLE
@@ -136,5 +136,5 @@ class TrainerDCVC(TrainerABC):
 
 
 if __name__ == "__main__":
-    trainer = TrainerDCVC(inter_frame_codec=InterFrameCodecDCVC)
+    trainer = TrainerDCVC()
     trainer.train()
