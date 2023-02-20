@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import json
 import logging
 import math
 from pathlib import Path
@@ -15,36 +16,8 @@ SCALES_MAX = 256
 SCALES_LEVELS = 64
 
 
-def get_scale_table(min_: float = SCALES_MIN, max_: float = SCALES_MAX, levels: int = SCALES_LEVELS):
+def get_scale_table(min_: float = SCALES_MIN, max_: float = SCALES_MAX, levels: int = SCALES_LEVELS) -> torch.Tensor:
     return torch.exp(torch.linspace(math.log(min_), math.log(max_), levels))
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--lambda_weight", type=float, help="weights for rd cost")
-    parser.add_argument("--gpu", action='store_true', default=False, help="use gpu or cpu")
-
-    parser.add_argument("--batch_size", type=int, default=4, help="batch size")
-
-    parser.add_argument("--intra_quality", type=int, default=3, help="quality factor of I frame codec")
-
-    parser.add_argument("--dataset_root", type=str, help="training h5 file")
-
-    parser.add_argument("--checkpoints", type=str, help="checkpoints path")
-    parser.add_argument("--pretrained", type=str, help="pretrained model path")
-
-    parser.add_argument("--epoch_milestone", type=int, nargs='+', default=500, help="training epochs per stage")
-    parser.add_argument("--lr_milestone", type=float, nargs='+', default=1e-4, help="learning rate for per stage")
-    parser.add_argument("--lr_decay_milestone", type=int, nargs='+', default=[100, 200, 300], help="learning rate decay milestone")
-    parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="learning rate decay factor")
-
-    parser.add_argument("--eval_epochs", type=int, default=1, help="interval of epochs for evaluation")
-    parser.add_argument("--save_epochs", type=int, default=5, help="interval of epochs for model saving")
-    parser.add_argument("--save_dir", type=str, default="./Experiments", help="directory for recording")
-    parser.add_argument("--verbose", action='store_true', default=False, help="use tensorboard and logger")
-
-    args = parser.parse_args()
-    return args
 
 
 class CustomLogger:
@@ -74,7 +47,7 @@ class Record:
     def get_item_list(self) -> list:
         return self.item_list
 
-    def add_item(self, name: str):
+    def add_item(self, name: str) -> None:
         self.item_list.append(name)
         self.data[name] = [0, 0]
 
@@ -97,8 +70,25 @@ class Record:
         return info
 
 
-def init():
-    args = parse_args()
+class Arguments:
+    def __init__(self, args: dict) -> None:
+        self.parse_args(args=args)
+
+    def parse_args(self, args: dict) -> None:
+        for key, value in args.items():
+            if isinstance(value, dict):
+                self.parse_args(value)
+            else:
+                self.__dict__[key] = value
+
+
+def init() -> tuple:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, help="filepath of configuration files")
+
+    with open(parser.parse_args().config, mode='r') as f:
+        args = Arguments(args=json.load(f))
+
     experiment_dir = Path(args.save_dir)
     experiment_dir.mkdir(exist_ok=True)
     experiment_dir = Path(str(experiment_dir) + '/' + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")))
@@ -113,17 +103,17 @@ def init():
         logger.info(str(args), print_=False)
         tb_dir = experiment_dir.joinpath('Tensorboard/')
         tb_dir.mkdir(exist_ok=True)
-        tb = SummaryWriter(log_dir=str(tb_dir), flush_secs=30)
+        tensorboard = SummaryWriter(log_dir=str(tb_dir), flush_secs=30)
         logger.info(r"===========Save tensorboard and logger to {0}===========".format(str(tb_dir)))
     else:
         print(r"===========Disable logger to accelerate training===========")
         logger = None
-        tb = None
-    return args, logger, ckpt_dir, tb
+        tensorboard = None
+    return args, logger, ckpt_dir, tensorboard
 
 
 class DecodedFrameBuffer:
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.frame_buffer = list()
 
@@ -131,10 +121,10 @@ class DecodedFrameBuffer:
         assert 1 <= num_frames <= len(self.frame_buffer)
         return self.frame_buffer[-num_frames:]
 
-    def update(self, frame: torch.Tensor):
+    def update(self, frame: torch.Tensor) -> None:
         self.frame_buffer.append(frame)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.frame_buffer)
 
 
@@ -150,12 +140,12 @@ def calculate_bpp(likelihoods: torch.Tensor | dict, num_pixels: int) -> torch.Te
         return bpp
 
 
-def cal_psnr(distortion: torch.Tensor):
+def cal_psnr(distortion: torch.Tensor) -> torch.Tensor:
     psnr = -10 * torch.log10(distortion)
     return psnr
 
 
-def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None):
+def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None) -> tuple:
     parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
     aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
     fixed_parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and not p.requires_grad)

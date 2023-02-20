@@ -17,20 +17,12 @@ torch.backends.cudnn.benchmark = True
 
 class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
-    def __init__(self, inter_frame_codec: nn.Module):
+    def __init__(self):
         self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(item_list=[
-            'rd_cost',
-            'recon_psnr', 'recon_psnr_inter',
-            'motion_bpp', 'frame_bpp',
-            'total_bpp', 'total_bpp_inter'
-        ])
+        self.record = Record(item_list=self.args.record_items)
 
-        self.inter_frame_codec = inter_frame_codec()
+        self.inter_frame_codec = None
         self.intra_frame_codec = IntraFrameCodec(quality=self.args.intra_quality, metric="mse", pretrained=True)
-        self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
-        self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
-        self.intra_frame_codec.eval()
 
         self.optimizers, self.aux_optimizers = self.init_optimizer()
         self.schedulers = self.aux_schedulers = None
@@ -42,6 +34,10 @@ class TrainerABC(metaclass=ABCMeta):
         self.train_steps = 0
 
     def train(self) -> None:
+        self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
+        self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
+        self.intra_frame_codec.eval()
+
         start_epoch, best_rd_cost = self.load_checkpoints()
 
         self.schedulers, self.aux_schedulers = self.init_schedulers(start_epoch=start_epoch)
