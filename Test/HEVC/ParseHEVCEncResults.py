@@ -6,9 +6,7 @@ enc_results_folder = r"D:\Traditional"
 save_folder = r"D:\HEVCResults"
 
 qp_list = [22, 27, 32, 37]
-# class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
-
-class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "UVG"]  # TODO: MCL-JCV have not been encoded yet
+class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
 
 
 def parse_encoder_results(results_path: str) -> dict:
@@ -86,17 +84,8 @@ def parse_all_classes():
         # TODO: just average all sequences?
         rd_points[class_name] = {"bpp": avg_bpp_list, "psnr": avg_psnr_list}
 
-
-
         with open(os.path.join(save_folder, class_name + ".json"), mode='w') as f:
             json.dump(rd_points, f)
-        #
-        # plt.plot(avg_bpp_list, avg_psnr_list, color='blue', marker='o', linewidth=1, markersize=6)
-        # plt.ylabel("PSNR (dB)")
-        # plt.xlabel("Bit per pixel")
-        # plt.title(class_name)
-        # plt.savefig(os.path.join(save_folder, class_name, class_name + ".png"), dpi=600)
-        # plt.close()
 
 
 def plot():

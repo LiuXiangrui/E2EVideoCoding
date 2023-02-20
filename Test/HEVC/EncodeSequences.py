@@ -93,8 +93,8 @@ def construct_cmds(qp_: int):
     return enc_cmd_list, dec_cmd_list
 
 
-def call_codec(args: str):
-    os.system(args)
+def call_codec(cmd: str):
+    os.system(cmd)
 
 
 def encode():
