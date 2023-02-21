@@ -4,23 +4,23 @@ from multiprocessing import Pool
 
 qp_list = [22, 27, 32, 37]
 
-results_folder = r"D:\Traditional"
+results_folder = r"D:\Traditional\x265"
 
-seq_cfg_folder = r"..\Config\seq2"
+seq_cfg_folder = r"..\Config\Sequences"
 
-encoder_path = r"ffmpeg.exe"
-decoder_path = r"ffmpeg.exe"
+encoder_path = r"C:\Users\xiangrliu3\Desktop\ffmpeg.exe"
+decoder_path = r"C:\Users\xiangrliu3\Desktop\ffmpeg.exe"
 
 
 def construct_cmds(qp_: int):
     folder_per_qp = os.path.join(results_folder, "QP{}".format(str(qp_)))
-    # os.makedirs(folder_per_qp, exist_ok=True)
+    os.makedirs(folder_per_qp, exist_ok=True)
 
     enc_cmd_list = []
 
     for class_cfg in os.listdir(seq_cfg_folder):
         folder_per_class = os.path.join(folder_per_qp, os.path.splitext(class_cfg)[0])
-        # os.makedirs(folder_per_class, exist_ok=True)
+        os.makedirs(folder_per_class, exist_ok=True)
 
         with open(os.path.join(seq_cfg_folder, class_cfg), 'r') as f:
             data = json.load(f)
@@ -43,13 +43,14 @@ def construct_cmds(qp_: int):
                                                 qp_, seq_cfg["GOPSize"],
                                                 bin_path, results_path)
                 enc_cmd_list.append(enc_cmd)
+                print(enc_cmd)
 
     return enc_cmd_list
 
 
 def call_codec(args: str):
-    os.system(args)
-
+    # os.system(args)
+    pass
 
 def encode():
     enc_args_list = []

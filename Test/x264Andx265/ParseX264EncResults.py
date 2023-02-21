@@ -2,13 +2,12 @@ import os
 import matplotlib.pyplot as plt
 import json
 
-enc_results_folder = r"D:\Traditional"
-save_folder = r"D:\HEVCResults"
+enc_results_folder = r"D:\Traditional\x264"
+save_folder = r"D:\x264Results"
 
 qp_list = [22, 27, 32, 37]
-# class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
 
-class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "UVG"]  # TODO: MCL-JCV have not been encoded yet
+class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
 
 
 def parse_encoder_results(results_path: str) -> dict:
@@ -94,9 +93,8 @@ def plot():
 
 
 if __name__ == "__main__":
-    # os.makedirs(save_folder, exist_ok=True)
-    # parse_all_classes()
-    # plot()
-    parse_encoder_results(r"C:\Users\XiangruiLiu\Desktop\b.txt")
+    os.makedirs(save_folder, exist_ok=True)
+    parse_all_classes()
+    plot()
 
 

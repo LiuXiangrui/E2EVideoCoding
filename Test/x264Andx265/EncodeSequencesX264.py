@@ -4,12 +4,12 @@ from multiprocessing import Pool
 
 qp_list = [22, 27, 32, 37]
 
-results_folder = r"D:\Traditional"
+results_folder = r"D:\Traditional\x264"
 
-seq_cfg_folder = r"..\Config\seq2"
+seq_cfg_folder = r"..\Config\Sequences"
 
-encoder_path = r"ffmpeg.exe"
-decoder_path = r"ffmpeg.exe"
+encoder_path = r"C:\Users\xiangrliu3\Desktop\ffmpeg.exe"
+decoder_path = r"C:\Users\xiangrliu3\Desktop\ffmpeg.exe"
 
 
 def construct_cmds(qp_: int):
@@ -37,25 +37,27 @@ def construct_cmds(qp_: int):
                 enc_cmd = r"{} -pix_fmt yuv420p -s {}x{} " \
                           "-r {} -i {} -vframes {} -c:v libx264 -preset veryslow -tune zerolatency -tune psnr " \
                           "-qp {} -g {} " \
-                          "-bf 2 -b_strategy 0 -sc_threshold 0 -flags +psnr -y" \
+                          "-bf 2 -b_strategy 0 -sc_threshold 0 -flags +psnr -y " \
                           "{} > {} 2>&1".format(encoder_path, seq_cfg["SourceWidth"], seq_cfg["SourceHeight"],
                                                 seq_cfg["FrameRate"], seq_path, seq_cfg["FramesToBeEncoded"],
                                                 qp_, seq_cfg["GOPSize"],
                                                 bin_path, results_path)
                 enc_cmd_list.append(enc_cmd)
+                print(enc_cmd)
 
     return enc_cmd_list
 
 
 def call_codec(args: str):
-    os.system(args)
+    # os.system(args)
+    pass
 
 
 def encode():
     enc_args_list = []
     dec_args_list = []
     for qp in qp_list:
-        e, d = construct_cmds(qp)
+        e = construct_cmds(qp)
         enc_args_list.extend(e)
         dec_args_list.extend(d)
     p = Pool(processes=8)

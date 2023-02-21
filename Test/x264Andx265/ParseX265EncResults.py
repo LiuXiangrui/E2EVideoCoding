@@ -2,13 +2,12 @@ import os
 import matplotlib.pyplot as plt
 import json
 
-enc_results_folder = r"D:\Traditional"
-save_folder = r"D:\HEVCResults"
+enc_results_folder = r"D:\Traditional\x265"
+save_folder = r"D:\x265Results"
 
 qp_list = [22, 27, 32, 37]
-# class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
 
-class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "UVG"]  # TODO: MCL-JCV have not been encoded yet
+class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
 
 
 def parse_encoder_results(results_path: str) -> dict:
@@ -18,22 +17,23 @@ def parse_encoder_results(results_path: str) -> dict:
         resolution = frame_rate = 0
 
         for line in raw_data:
-            if "Stream #0:0: Video: h264" in line:
+            if "Stream #0:0: Video: hevc" in line:
                 items = line.split()
                 resolution = int(items[-6].split('x')[0]) * int(items[-6].split('x')[1][:-1])
                 frame_rate = int(items[-4])
 
         raw_data_seq = raw_data[-1].split()
-        bitrate_kbps = float(raw_data_seq[-1][5:])
+        bitrate_kbps = float(raw_data_seq[-7])
         bpp = bitrate_kbps * 1000 / frame_rate / resolution  # TODO: is it right?
 
-        psnr = [float(raw_data_seq[-6][2:]), float(raw_data_seq[-5][2:]), float(raw_data_seq[-4][2:]), float(raw_data_seq[-3][4:])]  # [Y-PSNR, U-PSNR, V-PSNR, YUV-PSNR]
+        psnr = [0.0, 0.0, 0.0, float(raw_data_seq[-1])]  # [Y-PSNR, U-PSNR, V-PSNR, YUV-PSNR]
 
         return {
             "sequence_name": os.path.split(results_path)[-1].split('_')[0],
             "bpp": bpp,
             "psnr": psnr,
         }
+
 
 def parse_all_classes():
     for class_name in class_name_list:
@@ -93,9 +93,8 @@ def plot():
 
 
 if __name__ == "__main__":
-    # os.makedirs(save_folder, exist_ok=True)
-    # parse_all_classes()
-    # plot()
-    parse_encoder_results(r"C:\Users\XiangruiLiu\Desktop\b.txt")
+    os.makedirs(save_folder, exist_ok=True)
+    parse_all_classes()
+    plot()
 
 
