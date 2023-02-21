@@ -1,6 +1,5 @@
-import os
-import matplotlib.pyplot as plt
 import json
+import os
 
 enc_results_folder = r"D:\Traditional\x265"
 save_folder = r"D:\x265Results"
@@ -75,26 +74,6 @@ def parse_all_classes():
             json.dump(rd_points, f)
 
 
-def plot():
-    for class_name in class_name_list:
-        os.makedirs(os.path.join(save_folder, class_name), exist_ok=True)
-
-        json_filepath = os.path.join(save_folder, class_name + ".json")
-        with open(json_filepath, mode='r') as f:
-            load_dict = json.load(f)
-
-        for title in load_dict.keys():
-            plt.plot(load_dict[title]["bpp"], load_dict[title]["psnr"], color='blue', marker='o', linewidth=1, markersize=6)
-            plt.ylabel("PSNR (dB)")
-            plt.xlabel("Bit per pixel")
-            plt.title(title)
-            plt.savefig(os.path.join(save_folder, class_name, title + ".png"), dpi=600)
-            plt.close()
-
-
 if __name__ == "__main__":
     os.makedirs(save_folder, exist_ok=True)
     parse_all_classes()
-    plot()
-
-
