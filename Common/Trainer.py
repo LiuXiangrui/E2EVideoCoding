@@ -47,7 +47,7 @@ class TrainerABC(metaclass=ABCMeta):
         max_epochs = sum(epoch_milestone)
         for epoch in range(start_epoch, max_epochs):
             stage = self.infer_stage(epoch)
-            print("\nEpoch {0} Stage '{1}'".format(str(epoch), stage))
+            print("\nEpoch {0} Stage '{1}".format(str(epoch), stage))
             self.train_one_epoch(stage=stage)
 
             if epoch % self.args.eval_epochs == 0:
