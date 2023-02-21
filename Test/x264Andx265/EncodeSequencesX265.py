@@ -43,29 +43,21 @@ def construct_cmds(qp_: int):
                                                 qp_, seq_cfg["GOPSize"],
                                                 bin_path, results_path)
                 enc_cmd_list.append(enc_cmd)
-                print(enc_cmd)
 
     return enc_cmd_list
 
 
 def call_codec(args: str):
-    # os.system(args)
-    pass
+    os.system(args)
+
 
 def encode():
     enc_args_list = []
-    dec_args_list = []
     for qp in qp_list:
-        e, d = construct_cmds(qp)
+        e = construct_cmds(qp)
         enc_args_list.extend(e)
-        dec_args_list.extend(d)
     p = Pool(processes=8)
     for args in enc_args_list:
-        p.apply_async(call_codec, args=(args,))
-    p.close()
-    p.join()
-    p = Pool(processes=8)
-    for args in dec_args_list:
         p.apply_async(call_codec, args=(args,))
     p.close()
     p.join()
