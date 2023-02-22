@@ -131,14 +131,14 @@ class TrainerDVC(TrainerABC):
         self.aux_schedulers[stage].step()
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
+        epoch_milestone = self.args.epoch_milestone
         assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
         epoch_interval = [sum(epoch_milestone[:i]) - epoch > 0 for i in range(1, len(epoch_milestone) + 1)]
         stage = TrainingStage(epoch_interval.index(True))
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
-        lr_milestone = self.args.lr_milestone if isinstance(self.args.lr_milestone, list) else [self.args.lr_milestone, ]
+        lr_milestone = self.args.lr_milestone
         assert len(lr_milestone) == 1
 
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)

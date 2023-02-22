@@ -24,7 +24,7 @@ class TrainerABC(metaclass=ABCMeta):
         self.inter_frame_codec = None
         self.intra_frame_codec = IntraFrameCodec(quality=self.args.intra_quality, metric="mse", pretrained=True)
 
-        self.optimizers, self.aux_optimizers = self.init_optimizer()
+        self.optimizers = self.aux_optimizers = None
         self.schedulers = self.aux_schedulers = None
 
         self.train_dataloader, self.eval_dataloader = self.init_dataloader()
@@ -37,6 +37,8 @@ class TrainerABC(metaclass=ABCMeta):
         self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
         self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
         self.intra_frame_codec.eval()
+
+        self.optimizers, self.aux_optimizers = self.init_optimizer()
 
         start_epoch, best_rd_cost = self.load_checkpoints()
 
