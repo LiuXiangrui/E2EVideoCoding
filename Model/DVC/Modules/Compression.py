@@ -1,8 +1,8 @@
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
-from Common.Compression import FactorizedCompression, HyperpriorCompression
-from Common.Compression import AnalysisTransform, SynthesisTransform
-from Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
+from Model.Common.Compression import FactorizedCompression, HyperpriorCompression
+from Model.Common.Compression import AnalysisTransform, SynthesisTransform
+from Model.Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
 
 
 class MotionCompression(FactorizedCompression):

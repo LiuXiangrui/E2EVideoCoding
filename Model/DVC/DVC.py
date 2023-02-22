@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from DVC.Modules import MotionCompensation, MotionEstimation
-from DVC.Modules import MotionCompression, ResiduesCompression
+from Model.DVC.Modules import MotionCompensation, MotionEstimation
+from Model.DVC.Modules import MotionCompression, ResiduesCompression
 
 
 class InterFrameCodecDVC(nn.Module):

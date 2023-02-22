@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 
-from Common.Utils import optical_flow_warp
-from Common.BasicBlock import ResBlock
-from Common.MotionEstimation import SpyNetOpticalFlowEst
+from Model.Common.Utils import optical_flow_warp
+from Model.Common.BasicBlock import ResBlock
+from Model.Common.MotionEstimation import SpyNetOpticalFlowEst
 
 
 class MotionRefine(nn.Module):

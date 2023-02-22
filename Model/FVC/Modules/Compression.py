@@ -1,8 +1,8 @@
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
-from Common.Compression import HyperpriorCompression
-from Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
-from Common.Compression import AnalysisTransformWithResBlocks, SynthesisTransformWithResBlocks
+from Model.Common.Compression import HyperpriorCompression
+from Model.Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
+from Model.Common.Compression import AnalysisTransformWithResBlocks, SynthesisTransformWithResBlocks
 
 
 class MotionCompression(HyperpriorCompression):

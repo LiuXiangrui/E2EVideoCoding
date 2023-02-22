@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from Common.BasicBlock import EncUnit, DecUnit
+from Model.Common.BasicBlock import EncUnit, DecUnit
 from Modules import MotionCompensation, MotionEstimation
 from Modules import MultiFrameFeatsFusion
 from Modules import ResiduesCompression, MotionCompression

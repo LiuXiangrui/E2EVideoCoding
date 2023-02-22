@@ -7,10 +7,10 @@ from compressai.layers import MaskedConv2d, GDN
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
 sys.path.append("../../Common/")
-from Common.Compression import JointAutoregressiveCompression
-from Common.Compression import AnalysisTransform, SynthesisTransform
-from Common.Compression import ContextualAnalysisTransform, ContextualSynthesisTransform
-from Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
+from Model.Common.Compression import JointAutoregressiveCompression
+from Model.Common.Compression import AnalysisTransform, SynthesisTransform
+from Model.Common.Compression import ContextualAnalysisTransform, ContextualSynthesisTransform
+from Model.Common.Compression import HyperAnalysisTransform, HyperSynthesisTransform
 
 
 class MotionCompression(JointAutoregressiveCompression):

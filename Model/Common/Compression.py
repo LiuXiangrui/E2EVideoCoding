@@ -5,7 +5,7 @@ from compressai.layers import GDN
 from compressai.models import CompressionModel
 from torch import nn as nn
 
-from Common.BasicBlock import SubPixelConv, ResBlock, EncUnit, DecUnit
+from Model.Common.BasicBlock import SubPixelConv, ResBlock, EncUnit, DecUnit
 
 
 class FactorizedCompression(CompressionModel):

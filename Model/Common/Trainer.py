@@ -8,8 +8,8 @@ from torch.utils.data.dataloader import DataLoader
 from torchvision.transforms import RandomCrop
 from tqdm import tqdm
 
-from Common.Dataset import Vimeo90KDataset
-from Common.Utils import Record, init
+from Model.Common.Dataset import Vimeo90KDataset
+from Model.Common.Utils import Record, init
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True

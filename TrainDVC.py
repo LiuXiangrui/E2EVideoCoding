@@ -6,9 +6,9 @@ import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 
-from Common.Trainer import TrainerABC
-from Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
-from DVC.DVC import InterFrameCodecDVC
+from Model.Common.Trainer import TrainerABC
+from Model.Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
+from Model.DVC.DVC import InterFrameCodecDVC
 
 
 @unique
