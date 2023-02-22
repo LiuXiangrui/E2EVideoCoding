@@ -89,7 +89,7 @@ def init() -> tuple:
     with open(parser.parse_args().config, mode='r') as f:
         args = Arguments(args=json.load(f))
 
-    experiment_dir = Path(args.save_dir)
+    experiment_dir = Path(args.save_directory)
     experiment_dir.mkdir(exist_ok=True)
     experiment_dir = Path(str(experiment_dir) + '/' + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")))
     experiment_dir.mkdir(exist_ok=True)

@@ -165,7 +165,6 @@ dmypy.json
 
 # macOS dir files
 .DS_Store
-/Test/Encoders/EncoderApp.exe
-/Test/Encoders/DecoderApp.exe
-/Test/HEVC/TAppDecoder.exe
-/Test/HEVC/TAppEncoder.exe
+
+# training configurations
+*/**/*.json
