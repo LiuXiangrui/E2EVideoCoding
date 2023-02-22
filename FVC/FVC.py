@@ -12,11 +12,11 @@ class InterFrameCodecFVC(nn.Module):
         super().__init__()
         self.feats_extraction = EncUnit(in_channels=3, out_channels=64)
         self.motion_est = MotionEstimation()
-        self.motion_comp = MotionCompensation()
+        self.motion_comp = MotionCompensation(feats_channels=64, offset_channels=128)
         self.motion_compression = MotionCompression(N=N, M=M)
         self.residues_compression = ResiduesCompression(N=N, M=M)
         self.frame_reconstruction = DecUnit(in_channels=64, out_channels=3)
-        self.post_processing = MultiFrameFeatsFusion(motion_est=self.motion_est, motion_comp=self.motion_comp)
+        self.post_processing = MultiFrameFeatsFusion()
 
     def forward(self, frame: torch.Tensor, ref_frames_list: list, fusion: bool = False) -> tuple:
         feats = self.feats_extraction(frame)
