@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .InterPrediction import MotionEstimation, MotionCompensation
+
 
 class NonlocalAttentionFVC(nn.Module):
     def __init__(self, in_channels: int):
@@ -42,13 +44,16 @@ class MultiFrameFeatsFusionBlock(nn.Module):
 
 
 class MultiFrameFeatsFusion(nn.Module):
-    def __init__(self, motion_est: nn.Module, motion_comp: nn.Module):
+    def __init__(self):
         super().__init__()
         self.branch_self = MultiFrameFeatsFusionBlock()
+        self.motion_est = MotionEstimation()
+        self.motion_comp = MotionCompensation(feats_channels=64, offset_channels=64)
+
         self.branches_ref = nn.ModuleList([
-            MultiFrameFeatsFusionBlock(motion_est=motion_est, motion_comp=motion_comp),
-            MultiFrameFeatsFusionBlock(motion_est=motion_est, motion_comp=motion_comp),
-            MultiFrameFeatsFusionBlock(motion_est=motion_est, motion_comp=motion_comp)
+            MultiFrameFeatsFusionBlock(motion_est=self.motion_est, motion_comp=self.motion_comp),
+            MultiFrameFeatsFusionBlock(motion_est=self.motion_est, motion_comp=self.motion_comp),
+            MultiFrameFeatsFusionBlock(motion_est=self.motion_est, motion_comp=self.motion_comp)
         ])
 
         self.fusion = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)
