@@ -1,1 +1,0 @@
-python TrainDVC.py --config ./config.json
