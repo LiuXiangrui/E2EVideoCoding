@@ -135,7 +135,7 @@ class TrainerDVC(TrainerABC):
         stage = TrainingStage(epoch_interval.index(True))
         return stage
 
-    def init_optimizer(self) -> tuple[dict, dict]:
+    def init_optimizer(self) -> tuple:
         lr_milestone = self.args.lr_milestone
         assert len(lr_milestone) == 1
 
