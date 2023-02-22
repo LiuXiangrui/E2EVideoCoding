@@ -114,7 +114,7 @@ class TrainerABC(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def init_optimizer(self) -> tuple[dict, dict]:
+    def init_optimizer(self) -> tuple:
         raise NotImplementedError
 
     @abstractmethod

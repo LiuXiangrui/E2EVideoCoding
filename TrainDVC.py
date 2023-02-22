@@ -157,7 +157,7 @@ class TrainerDVC(TrainerABC):
         }
         return optimizers, aux_optimizers
 
-    def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
+    def init_schedulers(self, start_epoch: int) -> tuple:
         lr_decay_milestone = self.args.lr_decay_milestone if isinstance(self.args.lr_decay_milestone, list) else [self.args.lr_decay_milestone, ]
 
         scheduler = MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
