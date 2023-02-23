@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import datetime
 import json
@@ -82,6 +80,12 @@ class Arguments:
                 self.parse_args(value)
             else:
                 self.__dict__[key] = value
+
+    def __str__(self) -> str:
+        args = ""
+        for key, value in self.__dict__:
+            args += "{}: {}".format(key, value)
+        return args
 
 
 def init() -> tuple:
