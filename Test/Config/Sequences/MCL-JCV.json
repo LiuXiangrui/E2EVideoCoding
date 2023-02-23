@@ -3,7 +3,6 @@
     "sequences": {
         "videoSRC01_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -11,7 +10,6 @@
         },
         "videoSRC02_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -19,7 +17,6 @@
         },
         "videoSRC03_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -27,7 +24,6 @@
         },
         "videoSRC04_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -35,7 +31,6 @@
         },
         "videoSRC05_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -43,7 +38,6 @@
         },
         "videoSRC06_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -51,7 +45,6 @@
         },
         "videoSRC07_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -59,7 +52,6 @@
         },
         "videoSRC08_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -67,7 +59,6 @@
         },
         "videoSRC09_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -75,7 +66,6 @@
         },
         "videoSRC10_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -83,7 +73,6 @@
         },
         "videoSRC11_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -91,7 +80,6 @@
         },
         "videoSRC12_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -99,7 +87,6 @@
         },
         "videoSRC13_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -107,7 +94,6 @@
         },
         "videoSRC14_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -115,7 +101,6 @@
         },
         "videoSRC15_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -123,7 +108,6 @@
         },
         "videoSRC16_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -131,7 +115,6 @@
         },
         "videoSRC17_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -139,7 +122,6 @@
         },
         "videoSRC18_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -147,7 +129,6 @@
         },
         "videoSRC19_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -155,7 +136,6 @@
         },
         "videoSRC20_1920x1080_25": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -163,7 +143,6 @@
         },
         "videoSRC21_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -171,7 +150,6 @@
         },
         "videoSRC22_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -179,7 +157,6 @@
         },
         "videoSRC23_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -187,7 +164,6 @@
         },
         "videoSRC24_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -195,7 +171,6 @@
         },
         "videoSRC25_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -203,7 +178,6 @@
         },
         "videoSRC26_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -211,7 +185,6 @@
         },
         "videoSRC27_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -219,7 +192,6 @@
         },
         "videoSRC28_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -227,7 +199,6 @@
         },
         "videoSRC29_1920x1080_24": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -235,7 +206,6 @@
         },
         "videoSRC30_1920x1080_30": {
             "FramesToBeEncoded": 150,
-            "GOPSize": 12,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,

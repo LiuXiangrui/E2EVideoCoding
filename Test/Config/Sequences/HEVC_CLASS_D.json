@@ -3,8 +3,6 @@
     "sequences": {
         "BasketballPass_416x240_50": {
             "FramesToBeEncoded": 500,
-            "LastValidFrame": 499,
-            "GOPSize": 10,
             "FrameRate": 50,
             "SourceWidth": 416,
             "SourceHeight": 240,
@@ -12,8 +10,6 @@
         },
         "BlowingBubbles_416x240_50": {
             "FramesToBeEncoded": 500,
-            "LastValidFrame": 499,
-            "GOPSize": 10,
             "FrameRate": 50,
             "SourceWidth": 416,
             "SourceHeight": 240,
@@ -21,8 +17,6 @@
         },
         "BQSquare_416x240_60": {
             "FramesToBeEncoded": 600,
-            "LastValidFrame": 599,
-            "GOPSize": 10,
             "FrameRate": 60,
             "SourceWidth": 416,
             "SourceHeight": 240,

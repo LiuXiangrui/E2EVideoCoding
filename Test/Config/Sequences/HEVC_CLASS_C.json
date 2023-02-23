@@ -3,8 +3,6 @@
     "sequences": {
         "BQMall_832x480_60": {
             "FramesToBeEncoded": 600,
-            "LastValidFrame": 599,
-            "GOPSize": 10,
             "FrameRate": 60,
             "SourceWidth": 832,
             "SourceHeight": 480,
@@ -12,8 +10,6 @@
         },
         "BasketballDrill_832x480_50": {
             "FramesToBeEncoded": 500,
-            "LastValidFrame": 499,
-            "GOPSize": 10,
             "FrameRate": 50,
             "SourceWidth": 832,
             "SourceHeight": 480,
@@ -21,8 +17,6 @@
         },
         "PartyScene_832x480_50": {
             "FramesToBeEncoded": 500,
-            "LastValidFrame": 499,
-            "GOPSize": 10,
             "FrameRate": 50,
             "SourceWidth": 832,
             "SourceHeight": 480,
@@ -30,7 +24,6 @@
         },
         "RaceHorses_832x480_30": {
             "FramesToBeEncoded": 300,
-            "GOPSize": 10,
             "FrameRate": 30,
             "SourceWidth": 832,
             "SourceHeight": 480,

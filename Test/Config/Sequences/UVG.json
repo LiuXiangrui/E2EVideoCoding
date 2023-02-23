@@ -3,7 +3,6 @@
     "sequences": {
         "Beauty_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -11,7 +10,6 @@
         },
         "Bosphorus_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -19,7 +17,6 @@
         },
         "HoneyBee_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -27,7 +24,6 @@
         },
         "Jockey_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -35,7 +31,6 @@
         },
         "ReadySteadyGo_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -43,7 +38,6 @@
         },
         "ShakeNDry_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 300,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,
@@ -51,7 +45,6 @@
         },
         "YachtRide_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,
-            "GOPSize": 12,
             "FrameRate": 128,
             "SourceWidth": 1920,
             "SourceHeight": 1080,

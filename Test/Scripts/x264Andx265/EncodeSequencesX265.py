@@ -36,11 +36,11 @@ def construct_cmds(qp_: int):
 
                 enc_cmd = r"{} -pix_fmt yuv420p -s {}x{} " \
                           "-r {} -i {} -vframes {} -c:v libx265 -preset veryslow -tune zerolatency -tune psnr " \
-                          "-x265-params \"qp={}:keyint={}\" " \
+                          "-x265-params \"qp={}:keyint=32\" " \
                           "-flags +psnr -y " \
                           "{} > {} 2>&1".format(encoder_path, seq_cfg["SourceWidth"], seq_cfg["SourceHeight"],
                                                 seq_cfg["FrameRate"], seq_path, seq_cfg["FramesToBeEncoded"],
-                                                qp_, seq_cfg["GOPSize"],
+                                                qp_,
                                                 bin_path, results_path)
                 enc_cmd_list.append(enc_cmd)
 
