@@ -107,7 +107,7 @@ class TrainerFVC(TrainerABC):
         lr_milestone = self.args.lr_milestone
         assert len(lr_milestone) == 2
 
-        params_w_o_fusion, _ = separate_aux_and_normal_params(self.inter_frame_codec, exclude_net=self.inter_frame_codec.post_processing)
+        params_w_o_fusion, _ = separate_aux_and_normal_params(self.inter_frame_codec, exclude_module_list=self.inter_frame_codec.post_processing)
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
 
         optimizers = {

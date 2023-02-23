@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 
-from Modules import MotionCompensation, MotionEstimation
-from Modules import ContextualCompression, MotionCompression
+from .Modules import MotionCompensation, MotionEstimation
+from .Modules import ContextualCompression, MotionCompression
+from Model.Common.Utils import optical_flow_warp
 
 
 class InterFrameCodecDCVC(nn.Module):
@@ -14,12 +15,13 @@ class InterFrameCodecDCVC(nn.Module):
         self.contextual_compression = ContextualCompression(N=N_frame, M=M_frame)
 
     def forward(self, frame: torch.Tensor, ref: torch.Tensor):
-        with torch.no_grad():
-            motion_fields = self.motion_est(frame, ref=ref)
+        motion_fields = self.motion_est(frame, ref=ref)
 
         enc_results = self.motion_compression(motion_fields)
         motion_fields_hat = enc_results["x_hat"]
         motion_likelihoods = enc_results["likelihoods"]
+
+        warped_frame = optical_flow_warp(ref, motion_fields=motion_fields_hat)
 
         pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
 
@@ -27,7 +29,7 @@ class InterFrameCodecDCVC(nn.Module):
         frame_likelihoods = enc_results["likelihoods"]
         frame_hat = enc_results["x_hat"]
 
-        return frame_hat, motion_likelihoods, frame_likelihoods
+        return frame_hat, warped_frame, motion_likelihoods, frame_likelihoods
 
     def aux_loss(self) -> torch.Tensor:
         return self.motion_compression.aux_loss() + self.contextual_compression.aux_loss()

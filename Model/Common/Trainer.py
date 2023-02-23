@@ -33,6 +33,8 @@ class TrainerABC(metaclass=ABCMeta):
 
         self.train_steps = 0
 
+        self.best_rd_cost_per_stage = None
+
     def train(self) -> None:
         self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
         self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
@@ -42,9 +44,11 @@ class TrainerABC(metaclass=ABCMeta):
 
         start_epoch, best_rd_cost = self.load_checkpoints()
 
+        self.best_rd_cost_per_stage[self.infer_stage(epoch=start_epoch)] = best_rd_cost
+
         self.schedulers, self.aux_schedulers = self.init_schedulers(start_epoch=start_epoch)
 
-        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
+        epoch_milestone = self.args.epoch_milestone
 
         max_epochs = sum(epoch_milestone)
         for epoch in range(start_epoch, max_epochs):
@@ -54,9 +58,9 @@ class TrainerABC(metaclass=ABCMeta):
 
             if epoch % self.args.eval_epochs == 0:
                 rd_cost = self.evaluate(stage=stage)
-                if epoch % self.args.save_epochs == 0 or rd_cost < best_rd_cost:
-                    best_rd_cost = min(best_rd_cost, rd_cost)
-                    self.save_checkpoints(epoch=epoch, best_rd_cost=best_rd_cost, stage=stage)
+                if epoch % self.args.save_epochs == 0 or rd_cost < self.best_rd_cost_per_stage[stage]:
+                    self.best_rd_cost_per_stage[stage] = min(self.best_rd_cost_per_stage[stage], rd_cost)
+                    self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
 
     @torch.no_grad()
     def evaluate(self, stage: Enum) -> float:
@@ -105,9 +109,9 @@ class TrainerABC(metaclass=ABCMeta):
     def visualize(self, enc_results: dict, stage: Enum) -> None:
         raise NotImplementedError
 
+    @abstractmethod
     def lr_decay(self, stage: Enum) -> None:
-        self.schedulers[stage].step()
-        self.aux_schedulers[stage].step()
+        raise NotImplementedError
 
     @abstractmethod
     def infer_stage(self, epoch: int) -> Enum:
@@ -132,7 +136,7 @@ class TrainerABC(metaclass=ABCMeta):
     def load_checkpoints(self) -> tuple:
         start_epoch = 0
         best_rd_cost = 1e9
-        if self.args.checkpoints:
+        if hasattr(self.args, "checkpoints"):
             print("\n===========Load checkpoints {0}===========\n".format(self.args.checkpoints))
             ckpt = torch.load(self.args.checkpoints, map_location="cuda" if self.args.gpu else "cpu")
 
@@ -145,8 +149,7 @@ class TrainerABC(metaclass=ABCMeta):
             stage = self.infer_stage(epoch=ckpt["epoch"])
             self.optimizers[stage].load_state_dict(ckpt["optimizer"])
             self.aux_optimizers[stage].load_state_dict(ckpt["aux_optimizer"])
-
-        elif self.args.pretrained:
+        elif hasattr(self.args, "pretrained"):
             ckpt = torch.load(self.args.pretrained)
             print("\n===========Load pretrained {0}===========\n".format(self.args.pretrained))
             pretrained_dict = ckpt["inter_frame_codec"]

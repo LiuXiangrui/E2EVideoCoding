@@ -83,7 +83,7 @@ class Arguments:
 
     def __str__(self) -> str:
         args = ""
-        for key, value in self.__dict__:
+        for key, value in self.__dict__.items():
             args += "{}: {}".format(key, value)
         return args
 
@@ -151,7 +151,7 @@ def cal_psnr(distortion: torch.Tensor) -> torch.Tensor:
     return psnr
 
 
-def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None) -> tuple:
+def separate_aux_and_normal_params(net: nn.Module, exclude_module_list: list = None) -> tuple:
     parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and p.requires_grad)
     aux_parameters = set(n for n, p in net.named_parameters() if n.endswith(".quantiles") and p.requires_grad)
     fixed_parameters = set(n for n, p in net.named_parameters() if not n.endswith(".quantiles") and not p.requires_grad)
@@ -163,9 +163,14 @@ def separate_aux_and_normal_params(net: nn.Module, exclude_net: nn.Module = None
     assert len(inter_params) == 0
     assert len(union_params) - len(params_dict.keys()) == 0
 
-    if exclude_net is not None:
-        excluded_parameters = set("post_processing." + n for n, p in exclude_net.named_parameters())
-        parameters = parameters - (parameters & excluded_parameters)
+    if exclude_module_list is not None:
+        for exclude_module_name in exclude_module_list:
+            for n in sorted(list(parameters)):
+                if exclude_module_name in n:
+                    parameters.remove(n)
+            for n in sorted(list(aux_parameters)):
+                if exclude_module_name in n:
+                    aux_parameters.remove(n)
 
     params = (params_dict[n] for n in sorted(list(parameters)))
     aux_params = (params_dict[n] for n in sorted(list(aux_parameters)))

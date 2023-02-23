@@ -29,9 +29,8 @@ class SpyNetOpticalFlowEst(nn.Module):
         super().__init__()
         self.scale_levels = 4
         self.net = nn.ModuleList([SpyNetBasicBlock() for _ in range(self.scale_levels)])
-        # self.load_pretrained_model()
+        self.load_pretrained_model()
 
-    @torch.no_grad()
     def forward(self, cur_frame: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
         batch, _, _, _ = cur_frame.shape
         multiscale_cur_frame = [cur_frame.clone(), ]

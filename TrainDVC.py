@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import MultiStepLR
 
 from Model.Common.Trainer import TrainerABC
 from Model.Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
-from Model.DVC.DVC import InterFrameCodecDVC
+from Model.DVC import InterFrameCodecDVC
 
 
 @unique
@@ -24,7 +24,11 @@ class TrainerDVC(TrainerABC):
         super().__init__()
         self.inter_frame_codec = InterFrameCodecDVC(N_motion=self.args.N_motion, M_motion=self.args.M_motion, N_residues=self.args.N_residues, M_residues=self.args.M_residues)
 
+        self.best_rd_cost_per_stage = {TrainingStage(i): 1e9 for i in range(len(TrainingStage))}
+
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
+        assert stage != TrainingStage.NOT_AVAILABLE
+
         decode_frame_buffer = DecodedFrameBuffer()
 
         num_available_frames = 7 if stage == TrainingStage.ROLLING else 2
@@ -93,8 +97,8 @@ class TrainerDVC(TrainerABC):
         total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / num_available_frames
 
         return {
-            "rd_cost": rd_cost_avg,
             "aux_loss": aux_loss_avg,
+            "rd_cost": rd_cost_avg,
             "align_psnr": align_psnr_avg,
             "pred_psnr": pred_psnr_avg,
             "recon_psnr_inter": recon_psnr_avg_inter,
