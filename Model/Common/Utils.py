@@ -84,7 +84,7 @@ class Arguments:
     def __str__(self) -> str:
         args = ""
         for key, value in self.__dict__.items():
-            args += "{}: {}".format(key, value)
+            args += "{}: {}\n".format(key, value)
         return args
 
 
