@@ -128,7 +128,7 @@ class DecodedFrameBuffer:
         return self.frame_buffer[-num_frames:]
 
     def update(self, frame: torch.Tensor) -> None:
-        self.frame_buffer.append(frame)
+        self.frame_buffer.append(frame.clone().detach())
 
     def __len__(self) -> int:
         return len(self.frame_buffer)
