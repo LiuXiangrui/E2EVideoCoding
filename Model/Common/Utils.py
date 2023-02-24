@@ -10,6 +10,7 @@ from prettytable import PrettyTable
 from torch import nn as nn
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
 SCALES_MIN = 0.11
 SCALES_MAX = 256
@@ -190,3 +191,66 @@ def optical_flow_warp(x: torch.Tensor, motion_fields: torch.Tensor) -> torch.Ten
     warped_x = F.grid_sample(input=x, grid=(grid + motion_fields).permute(0, 2, 3, 1),
                              mode="bilinear", padding_mode="border", align_corners=False)
     return warped_x
+
+
+def read_yuv_420p(yuv_filepath: str, height: int, width: int, num_frames: int) -> list:
+    frames = []
+
+    chroma_height = height // 2
+    chroma_width = width // 2
+    with open(yuv_filepath, mode='rb') as f:
+        frame_counter = 0
+        while frame_counter < num_frames:
+            y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
+            u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'), (chroma_height, chroma_width)).astype(np.uint8)
+            v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'), (chroma_height, chroma_width)).astype(np.uint8)
+            frames.append([y_data, u_data, v_data])
+            frame_counter += 1
+    return frames
+
+
+def yuv420_to_rgb(yuv_data: list) -> np.ndarray:
+    convert_matrix = np.array([
+        [1.000,  1.000, 1.000],
+        [0.000, -0.394, 2.032],
+        [1.140, -0.581, 0.000],
+    ])
+
+    y_data, u_data, v_data = yuv_data
+
+    # pad chroma data to the size of luma data
+    u_data = np.repeat(np.repeat(u_data, repeats=2, axis=0), repeats=2, axis=1)
+    v_data = np.repeat(np.repeat(v_data, repeats=2, axis=0), repeats=2, axis=1)
+
+    yuv_data = np.stack([y_data, u_data, v_data], axis=-1).astype(np.float64)
+    yuv_data[:, :, 1:] -= 127.5
+
+    rgb_data = np.dot(yuv_data, convert_matrix)
+
+    rgb_data = np.clip(rgb_data, a_min=0., a_max=255.).astype(np.uint8)
+
+    return rgb_data
+
+
+def rgb_to_yuv420(rgb_data: np.ndarray) -> list:
+    """
+    convert rgb array to list of yuv420 array
+    :param rgb_data: rgb array with shape (H, W, 3) and the range of data is [0, 255]
+    :return yuv_data: list of yuv 420 array and the range of data is [0, 255]
+    """
+    convert_matrix = np.array([
+        [0.29900, -0.147108, 0.614777],
+        [0.58700, -0.288804, -0.514799],
+        [0.11400, 0.435912, -0.099978]
+    ])
+
+    yuv_data = np.dot(rgb_data, convert_matrix)
+    yuv_data[:, :, 1:] += 127.5
+
+    yuv_data = np.clip(yuv_data, a_min=0., a_max=255.).astype(np.uint8)
+
+    y_data, u_data, v_data = np.array_split(yuv_data, indices_or_sections=3, axis=-1)
+
+    yuv_data = [y_data[:, :, 0], u_data[::2, ::2, 0], v_data[::2, ::2, 0]]
+
+    return yuv_data
