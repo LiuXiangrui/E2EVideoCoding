@@ -167,5 +167,4 @@ dmypy.json
 .DS_Store
 
 # training configurations
-*.json
-*/**/*.json
+Train/*.json
