@@ -22,7 +22,7 @@ class TrainingStage(Enum):
 class TrainerDVC(TrainerABC):
     def __init__(self) -> None:
         super().__init__()
-        self.inter_frame_codec = InterFrameCodecDVC(N_motion=self.args.N_motion, M_motion=self.args.M_motion, N_residues=self.args.N_residues, M_residues=self.args.M_residues)
+        self.inter_frame_codec = InterFrameCodecDVC(network_config=self.network_args.serialize())
 
         self.best_rd_cost_per_stage = {TrainingStage(i): 1e9 for i in range(len(TrainingStage))}
 
@@ -35,7 +35,7 @@ class TrainerDVC(TrainerABC):
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
-        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
+        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.training_args.gpu else "cpu")
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
@@ -46,7 +46,7 @@ class TrainerDVC(TrainerABC):
         intra_psnr = cal_psnr(intra_dist)
         intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, num_available_frames)]
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.training_args.gpu else "cpu") for i in range(1, num_available_frames)]
 
         prediction = [torch.zeros_like(intra_frame_hat), ]
 
@@ -73,7 +73,7 @@ class TrainerDVC(TrainerABC):
             rate = frame_bpp + motion_bpp
             distortion = 0.1 * (align_dist + pred_dist) + recon_dist if stage == TrainingStage.WITH_INTER_LOSS else recon_dist
 
-            rd_cost = self.args.lambda_weight * distortion + rate
+            rd_cost = self.training_args.lambda_weight * distortion + rate
 
             aux_loss = self.inter_frame_codec.aux_loss()
 
@@ -133,14 +133,14 @@ class TrainerDVC(TrainerABC):
         self.aux_schedulers[stage].step()
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone
+        epoch_milestone = self.training_args.epoch_milestone
         assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
         epoch_interval = [sum(epoch_milestone[:i]) - epoch > 0 for i in range(1, len(epoch_milestone) + 1)]
         stage = TrainingStage(epoch_interval.index(True))
         return stage
 
     def init_optimizer(self) -> tuple:
-        lr_milestone = self.args.lr_milestone
+        lr_milestone = self.training_args.lr_milestone
         assert len(lr_milestone) == 1
 
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
@@ -162,12 +162,12 @@ class TrainerDVC(TrainerABC):
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple:
-        lr_decay_milestone = self.args.lr_decay_milestone if isinstance(self.args.lr_decay_milestone, list) else [self.args.lr_decay_milestone, ]
+        lr_decay_milestone = self.training_args.lr_decay_milestone if isinstance(self.training_args.lr_decay_milestone, list) else [self.training_args.lr_decay_milestone, ]
 
         scheduler = MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
-                                milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+                                milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
         aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
-                                    milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+                                    milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
 
         schedulers = {
             TrainingStage.WITH_INTER_LOSS: scheduler,

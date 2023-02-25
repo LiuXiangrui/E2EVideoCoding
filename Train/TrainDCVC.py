@@ -21,7 +21,7 @@ class TrainingStage(Enum):
 class TrainerDCVC(TrainerABC):
     def __init__(self) -> None:
         super().__init__()
-        self.inter_frame_codec = InterFrameCodecDCVC(N_motion=self.args.N_motion, M_motion=self.args.M_motion, N_frame=self.args.N_frame, M_frame=self.args.M_frame)
+        self.inter_frame_codec = InterFrameCodecDCVC(network_config=self.network_args.serialize())
 
         self.best_rd_cost_per_stage = {TrainingStage(i): 1e9 for i in range(len(TrainingStage))}
 
@@ -34,7 +34,7 @@ class TrainerDCVC(TrainerABC):
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
-        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
+        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.training_args.gpu else "cpu")
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
@@ -45,7 +45,7 @@ class TrainerDCVC(TrainerABC):
         intra_psnr = cal_psnr(intra_dist)
         intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, num_available_frames)]
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.training_args.gpu else "cpu") for i in range(1, num_available_frames)]
 
         alignment = [torch.zeros_like(intra_frame_hat), ]
 
@@ -69,7 +69,7 @@ class TrainerDCVC(TrainerABC):
             rate = motion_bpp * int(stage == TrainingStage.ME or stage == TrainingStage.ALL) + frame_bpp * int(stage == TrainingStage.CONTEXTUAL_CODING or stage == TrainingStage.ALL)
             distortion = align_dist if stage == TrainingStage.ME else recon_dist
 
-            rd_cost = self.args.lambda_weight * distortion + rate
+            rd_cost = self.training_args.lambda_weight * distortion + rate
 
             aux_loss = self.inter_frame_codec.aux_loss()
 
@@ -123,14 +123,14 @@ class TrainerDCVC(TrainerABC):
         pass  # no lr decay strategy
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone
+        epoch_milestone = self.training_args.epoch_milestone
         assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
         epoch_interval = [sum(epoch_milestone[:i]) - epoch > 0 for i in range(1, len(epoch_milestone) + 1)]
         stage = TrainingStage(epoch_interval.index(True))
         return stage
 
     def init_optimizer(self) -> tuple:
-        lr_milestone = self.args.lr_milestone
+        lr_milestone = self.training_args.lr_milestone
         assert len(lr_milestone) == 2
 
         optimizers = {}

@@ -4,6 +4,8 @@ import json
 import logging
 import math
 from pathlib import Path
+import struct
+
 
 import torch
 from prettytable import PrettyTable
@@ -77,16 +79,21 @@ class Arguments:
 
     def parse_args(self, args: dict) -> None:
         for key, value in args.items():
-            if isinstance(value, dict):
-                self.parse_args(value)
-            else:
-                self.__dict__[key] = value
+            self.__dict__[key] = Arguments(value) if isinstance(value, dict) else value
 
-    def __str__(self) -> str:
+    def __str__(self, indent: int = 0) -> str:
         args = ""
         for key, value in self.__dict__.items():
-            args += "{}: {}\n".format(key, value)
+            args += "".join([' '] * indent)
+            if isinstance(value, Arguments):
+                args += "{}: \n".format(key)
+                args += value.__str__(indent=indent + 2)
+            else:
+                args += "{}: {}\n".format(key, value)
         return args
+
+    def serialize(self):
+        return self.__dict__
 
 
 def init() -> tuple:
@@ -94,7 +101,8 @@ def init() -> tuple:
     parser.add_argument("--config", type=str, help="filepath of configuration files")
 
     with open(parser.parse_args().config, mode='r') as f:
-        args = Arguments(args=json.load(f))
+        network_args = Arguments(args=json.load(f)["Network"])
+        training_args = Arguments(args=json.load(f)["Training"])
 
     experiment_dir = Path(args.save_directory)
     experiment_dir.mkdir(exist_ok=True)
@@ -116,7 +124,7 @@ def init() -> tuple:
         print(r"===========Disable logger to accelerate training===========")
         logger = None
         tensorboard = None
-    return args, logger, ckpt_dir, tensorboard
+    return network_args, training_args, logger, ckpt_dir, tensorboard
 
 
 class DecodedFrameBuffer:
@@ -254,3 +262,29 @@ def rgb_to_yuv420(rgb_data: np.ndarray) -> list:
     yuv_data = [y_data[:, :, 0], u_data[::2, ::2, 0], v_data[::2, ::2, 0]]
 
     return yuv_data
+
+
+bit_depth_map = {
+        8: 'B',
+        16: 'H',
+        32: 'I'
+}
+
+
+def write_uintx(f, value: int, bit_depth: int) -> None:
+    f.write(struct.pack(">{}".format(bit_depth_map[bit_depth]), value))
+
+
+def read_uintx(f, bit_depth: int) -> int:
+    return struct.unpack(">{}".format(bit_depth_map[bit_depth]), f.read(struct.calcsize(bit_depth_map[bit_depth])))[0]
+
+
+def write_bytes(f, values, fmt=">{:d}s"):
+    if len(values) == 0:
+        return
+    f.write(struct.pack(fmt.format(len(values)), values))
+    return len(values) * 1
+
+
+def read_bytes(f, n, fmt=">{:d}s"):
+    return struct.unpack(fmt.format(n), f.read(n * struct.calcsize("s")))[0]

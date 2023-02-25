@@ -7,12 +7,12 @@ from Model.Common.Utils import optical_flow_warp
 
 
 class InterFrameCodecDCVC(nn.Module):
-    def __init__(self, N_motion: int = 64, M_motion: int = 128, N_frame: int = 64, M_frame: int = 96):
+    def __init__(self, network_config: dict):
         super().__init__()
         self.motion_est = MotionEstimation()
-        self.motion_comp = MotionCompensation(N=N_frame)
-        self.motion_compression = MotionCompression(N=N_motion, M=M_motion)
-        self.contextual_compression = ContextualCompression(N=N_frame, M=M_frame)
+        self.motion_comp = MotionCompensation(N=network_config["N_frame"])
+        self.motion_compression = MotionCompression(N=network_config["N_motion"], M=network_config["M_motion"])
+        self.contextual_compression = ContextualCompression(N=network_config["N_frame"], M=network_config["M_frame"])
 
     def forward(self, frame: torch.Tensor, ref: torch.Tensor):
         motion_fields = self.motion_est(frame, ref=ref)

@@ -6,3 +6,4 @@ Pillow~=9.3.0
 prettytable~=3.6.0
 thop~=0.1.1-2209072238
 matplotlib~=3.7.0
+numpy~=1.23.5

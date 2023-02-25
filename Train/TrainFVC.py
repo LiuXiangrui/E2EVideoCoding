@@ -19,7 +19,7 @@ class TrainingStage(Enum):
 class TrainerFVC(TrainerABC):
     def __init__(self) -> None:
         super().__init__()
-        self.inter_frame_codec = InterFrameCodecFVC(N=self.args.N, M=self.args.M)
+        self.inter_frame_codec = InterFrameCodecFVC(N=self.training_args.N, M=self.training_args.M)
 
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         assert stage != TrainingStage.NOT_AVAILABLE
@@ -30,7 +30,7 @@ class TrainerFVC(TrainerABC):
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
-        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.args.gpu else "cpu")
+        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.training_args.gpu else "cpu")
         num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
@@ -42,7 +42,7 @@ class TrainerFVC(TrainerABC):
         intra_psnr = cal_psnr(intra_dist)
         intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.args.gpu else "cpu") for i in range(1, num_available_frames)]
+        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.training_args.gpu else "cpu") for i in range(1, num_available_frames)]
 
         rd_cost_avg = aux_loss_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
 
@@ -58,7 +58,7 @@ class TrainerFVC(TrainerABC):
             motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
             frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
 
-            rd_cost = self.args.lambda_weight * recon_dist + frame_bpp + motion_bpp
+            rd_cost = self.training_args.lambda_weight * recon_dist + frame_bpp + motion_bpp
             aux_loss = self.inter_frame_codec.aux_loss()
 
             rd_cost_avg += rd_cost / len(inter_frames)
@@ -97,14 +97,14 @@ class TrainerFVC(TrainerABC):
                                             img_tensor=enc_results["pristine"][i].clone().detach().cpu())
 
     def infer_stage(self, epoch: int) -> TrainingStage:
-        epoch_milestone = self.args.epoch_milestone if isinstance(self.args.epoch_milestone, list) else [self.args.epoch_milestone, ]
+        epoch_milestone = self.training_args.epoch_milestone if isinstance(self.training_args.epoch_milestone, list) else [self.training_args.epoch_milestone, ]
         assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
         epoch_interval = [sum(epoch_milestone[:i]) - epoch > 0 for i in range(1, len(epoch_milestone) + 1)]
         stage = TrainingStage(epoch_interval.index(True))
         return stage
 
     def init_optimizer(self) -> tuple[dict, dict]:
-        lr_milestone = self.args.lr_milestone
+        lr_milestone = self.training_args.lr_milestone
         assert len(lr_milestone) == 2
 
         params_w_o_fusion, _ = separate_aux_and_normal_params(self.inter_frame_codec, exclude_module_list=self.inter_frame_codec.post_processing)
@@ -123,20 +123,20 @@ class TrainerFVC(TrainerABC):
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
-        lr_decay_milestone = self.args.lr_decay_milestone
+        lr_decay_milestone = self.training_args.lr_decay_milestone
 
         schedulers = {
             TrainingStage.WITHOUT_FUSION: MultiStepLR(optimizer=self.optimizers[TrainingStage.WITHOUT_FUSION], last_epoch=start_epoch - 1,
-                                                      milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor),
+                                                      milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
             TrainingStage.WITH_FUSION: MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_FUSION], last_epoch=start_epoch - 1,
-                                                   milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor),
+                                                   milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
         }
 
         aux_schedulers = {
             TrainingStage.WITHOUT_FUSION: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITHOUT_FUSION], last_epoch=start_epoch - 1,
-                                                      milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor),
+                                                      milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
             TrainingStage.WITH_FUSION: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_FUSION], last_epoch=start_epoch - 1,
-                                                   milestones=lr_decay_milestone, gamma=self.args.lr_decay_factor)
+                                                   milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
         }
 
         return schedulers, aux_schedulers

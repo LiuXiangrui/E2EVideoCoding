@@ -18,11 +18,11 @@ torch.backends.cudnn.benchmark = True
 class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
     def __init__(self):
-        self.args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(item_list=self.args.record_items)
+        self.network_args, self.training_args, self.logger, self.checkpoints_dir, self.tensorboard = init()
+        self.record = Record(item_list=self.training_args.record_items)
 
         self.inter_frame_codec = None
-        self.intra_frame_codec = IntraFrameCodec(quality=self.args.intra_quality, metric="mse", pretrained=True)
+        self.intra_frame_codec = IntraFrameCodec(quality=self.training_args.intra_quality, metric="mse", pretrained=True)
 
         self.optimizers = self.aux_optimizers = None
         self.schedulers = self.aux_schedulers = None
@@ -36,8 +36,8 @@ class TrainerABC(metaclass=ABCMeta):
         self.best_rd_cost_per_stage = None
 
     def train(self) -> None:
-        self.intra_frame_codec.to("cuda" if self.args.gpu else "cpu")
-        self.inter_frame_codec.to("cuda" if self.args.gpu else "cpu")
+        self.intra_frame_codec.to("cuda" if self.training_args.gpu else "cpu")
+        self.inter_frame_codec.to("cuda" if self.training_args.gpu else "cpu")
         self.intra_frame_codec.eval()
 
         self.optimizers, self.aux_optimizers = self.init_optimizer()
@@ -48,7 +48,7 @@ class TrainerABC(metaclass=ABCMeta):
 
         self.schedulers, self.aux_schedulers = self.init_schedulers(start_epoch=start_epoch)
 
-        epoch_milestone = self.args.epoch_milestone
+        epoch_milestone = self.training_args.epoch_milestone
 
         max_epochs = sum(epoch_milestone)
         for epoch in range(start_epoch, max_epochs):
@@ -56,9 +56,9 @@ class TrainerABC(metaclass=ABCMeta):
             print("\nEpoch {0} Stage '{1}".format(str(epoch), stage))
             self.train_one_epoch(stage=stage)
 
-            if epoch % self.args.eval_epochs == 0:
+            if epoch % self.training_args.eval_epochs == 0:
                 rd_cost = self.evaluate(stage=stage)
-                if epoch % self.args.save_epochs == 0 or rd_cost < self.best_rd_cost_per_stage[stage]:
+                if epoch % self.training_args.save_epochs == 0 or rd_cost < self.best_rd_cost_per_stage[stage]:
                     self.best_rd_cost_per_stage[stage] = min(self.best_rd_cost_per_stage[stage], rd_cost)
                     self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
 
@@ -126,19 +126,19 @@ class TrainerABC(metaclass=ABCMeta):
         raise NotImplementedError
 
     def init_dataloader(self) -> tuple:
-        train_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_trainlist.txt",
+        train_dataset = Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_trainlist.txt",
                                         transform=RandomCrop(size=256))
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.args.batch_size, shuffle=True)
-        eval_dataset = Vimeo90KDataset(root=self.args.dataset_root, list_filename="sep_testlist.txt")
+        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.training_args.batch_size, shuffle=True)
+        eval_dataset = Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_testlist.txt")
         eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
         return train_dataloader, eval_dataloader
 
     def load_checkpoints(self) -> tuple:
         start_epoch = 0
         best_rd_cost = 1e9
-        if hasattr(self.args, "checkpoints"):
-            print("\n===========Load checkpoints {0}===========\n".format(self.args.checkpoints))
-            ckpt = torch.load(self.args.checkpoints, map_location="cuda" if self.args.gpu else "cpu")
+        if hasattr(self.training_args, "checkpoints"):
+            print("\n===========Load checkpoints {0}===========\n".format(self.training_args.checkpoints))
+            ckpt = torch.load(self.training_args.checkpoints, map_location="cuda" if self.training_args.gpu else "cpu")
 
             best_rd_cost = ckpt['best_rd_cost']
 
@@ -149,9 +149,9 @@ class TrainerABC(metaclass=ABCMeta):
             stage = self.infer_stage(epoch=ckpt["epoch"])
             self.optimizers[stage].load_state_dict(ckpt["optimizer"])
             self.aux_optimizers[stage].load_state_dict(ckpt["aux_optimizer"])
-        elif hasattr(self.args, "pretrained"):
-            ckpt = torch.load(self.args.pretrained)
-            print("\n===========Load pretrained {0}===========\n".format(self.args.pretrained))
+        elif hasattr(self.training_args, "pretrained"):
+            ckpt = torch.load(self.training_args.pretrained)
+            print("\n===========Load pretrained {0}===========\n".format(self.training_args.pretrained))
             pretrained_dict = ckpt["inter_frame_codec"]
             model_dict = self.inter_frame_codec.state_dict()
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if

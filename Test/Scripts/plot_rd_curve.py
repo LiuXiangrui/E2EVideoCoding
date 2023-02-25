@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import json
 
 
-results_folder = "./Results"
+results_folder = "../Results"
 
-figure_save_folder = "./Figures"
+figure_save_folder = "../Figures"
 
 class_name_list = ["HEVC_CLASS_B", "HEVC_CLASS_C", "HEVC_CLASS_D", "HEVC_CLASS_E", "MCL-JCV", "UVG"]
 

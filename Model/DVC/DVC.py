@@ -6,12 +6,12 @@ from .Modules import MotionCompression, ResiduesCompression
 
 
 class InterFrameCodecDVC(nn.Module):
-    def __init__(self, N_motion: int = 128, M_motion: int = 128, N_residues: int = 128, M_residues: int = 192):
+    def __init__(self, network_config: dict):
         super().__init__()
         self.motion_est = MotionEstimation()
         self.motion_comp = MotionCompensation()
-        self.motion_compression = MotionCompression(N=N_motion, M=M_motion)
-        self.residues_compression = ResiduesCompression(N=N_residues, M=M_residues)
+        self.motion_compression = MotionCompression(N=network_config["N_motion"], M=network_config["M_motion"])
+        self.residues_compression = ResiduesCompression(N=network_config["N_residues"], M=network_config["M_residues"])
 
     def forward(self, frame: torch.Tensor, ref: torch.Tensor) -> tuple:
         motion_fields = self.motion_est(frame, ref=ref)

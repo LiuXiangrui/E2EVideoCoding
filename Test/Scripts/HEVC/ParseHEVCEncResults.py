@@ -1,7 +1,7 @@
 import json
 import os
 
-enc_results_folder = r"D:\Traditional"
+enc_results_folder = r"D:\HEVCResults"
 save_folder = r"D:\HEVCResults"
 
 qp_list = [22, 27, 32, 37]
