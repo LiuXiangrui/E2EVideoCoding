@@ -1,3 +1,5 @@
+# -- coding: utf-8 --**
+
 import argparse
 import datetime
 import json
@@ -101,21 +103,24 @@ def init() -> tuple:
     parser.add_argument("--config", type=str, help="filepath of configuration files")
 
     with open(parser.parse_args().config, mode='r') as f:
-        network_args = Arguments(args=json.load(f)["Network"])
-        training_args = Arguments(args=json.load(f)["Training"])
+        args = json.load(f)
+        network_args = Arguments(args=args["Network"])
+        training_args = Arguments(args=args["Training"])
 
-    experiment_dir = Path(args.save_directory)
+    experiment_dir = Path(training_args.save_directory)
     experiment_dir.mkdir(exist_ok=True)
     experiment_dir = Path(str(experiment_dir) + '/' + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")))
     experiment_dir.mkdir(exist_ok=True)
     ckpt_dir = experiment_dir.joinpath("Checkpoints/")
     ckpt_dir.mkdir(exist_ok=True)
     print(r"===========Save checkpoints to {0}===========".format(str(ckpt_dir)))
-    if args.verbose:
+    if training_args.verbose:
         log_dir = experiment_dir.joinpath('Log/')
         logger = CustomLogger(log_dir=log_dir)
-        logger.info('PARAMETER ...', print_=False)
-        logger.info(str(args), print_=False)
+        logger.info('Network PARAMETER ...\n', print_=False)
+        logger.info(str(network_args), print_=False)
+        logger.info('Training PARAMETER ...\n', print_=False)
+        logger.info(str(training_args), print_=False)
         tb_dir = experiment_dir.joinpath('Tensorboard/')
         tb_dir.mkdir(exist_ok=True)
         tensorboard = SummaryWriter(log_dir=str(tb_dir), flush_secs=30)
