@@ -6,6 +6,8 @@ from compressai.zoo import cheng2020_anchor as IntraFrameCodec
 import json
 import argparse
 import torch
+
+
 available_model = {
     "DVC": InterFrameCodecDVC,
     "DCVC": InterFrameCodecDCVC,
@@ -135,12 +137,12 @@ def compress_gop(frames: list) -> list:
     enc_results_list.append(enc_results)
 
     # decompress intra frame and add it to decoded buffer
-    dec_results = intra_frame_codec.decompress(strings=enc_results["strings"], shape=enc_results["shape"])
-    intra_frame_hat = torch.clamp(dec_results["x_hat"], min=0., max=1.)
+    intra_frame_hat = intra_frame_codec.decompress(strings=enc_results["strings"], shape=enc_results["shape"])["x_hat"]
+    intra_frame_hat = torch.clamp(intra_frame_hat, min=0., max=1.)
     decode_frame_buffer.update(intra_frame_hat)
 
     for frame in frames[1:]:
-        ref = decode_frame_buffer.get_frames()
+        ref = decode_frame_buffer.get_frames(num_frames=1)[0]
         motion_enc_results, frame_enc_results = inter_frame_codec.encode(frame, ref=ref)
         frame_hat = inter_frame_codec.decode(ref=ref, motion_enc_results=motion_enc_results, frame_enc_results=frame_enc_results)
         decode_frame_buffer.update(frame_hat)
@@ -169,14 +171,30 @@ def compress_sequence(frames: list, bin_path: str) -> None:
 
 @torch.no_grad()
 def decompress_gop(dec_results_list) -> list:
-    decode_frame_buffer = DecodedFrameBuffer()
+    decoded_frame_buffer = DecodedFrameBuffer()
 
     # decompress intra frame
+    dec_results_intra = dec_results_list[0]
 
+    dec_results = intra_frame_codec.decompress(strings=dec_results_intra["strings"], shape=dec_results_intra["shape"])
+    intra_frame_hat = torch.clamp(dec_results["x_hat"], min=0., max=1.)
+    decoded_frame_buffer.update(intra_frame_hat)
+
+    dec_results_list = dec_results_list[1:]
+    for frame_idx in range(dec_results_list // 2):
+        ref = decoded_frame_buffer.get_frames(num_frames=1)[0]
+        frame_hat = inter_frame_codec.decode(ref=ref, motion_enc_results=dec_results_list[frame_idx],  # first one is the results of motion
+                                             frame_enc_results=dec_results_list[frame_idx+1])  # second one is the results of frame
+        decoded_frame_buffer.update(frame_hat)
+
+    decoded_frames = decoded_frame_buffer.get_frames(num_frames=len(decoded_frame_buffer))
+
+    return decoded_frames
 
 
 @torch.no_grad()
 def decompress_sequence(bin_path: str) -> list:
+    # read bitstream from file
     with open(bin_path, mode='rb') as f:
         # read header bit
         head_info = read_header_stream(f)
@@ -186,5 +204,14 @@ def decompress_sequence(bin_path: str) -> list:
         width = head_info["width"]
         height = head_info["height"]
 
-        frames = [None, ] * num_frames
+        decoded_results = [read_frame_stream(f) for _ in range(num_frames)]
+
+    # decompress frames from bitstream
+    decoded_frames = []
+    gop_results = [decoded_results[i: i + gop - 1] for i in range(0, num_frames, gop_size)]
+    for results in gop_results:
+        decoded_frames.extend(decompress_gop(results))
+
+    return decoded_frames
+
 

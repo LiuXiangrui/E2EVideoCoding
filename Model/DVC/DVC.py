@@ -68,9 +68,3 @@ class InterFrameCodecDVC(nn.Module):
         frame_hat = torch.clamp(frame_hat, min=0.0, max=1.0)
 
         return frame_hat
-
-
-if __name__ == "__main__":
-    a = InterFrameCodecDVC()
-    c = a(torch.randn(1, 3, 128, 128), torch.randn(1, 3, 128, 128))
-    exit()
