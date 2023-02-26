@@ -31,7 +31,7 @@ class TrainerABC(metaclass=ABCMeta):
 
         self.distortion_metric = nn.MSELoss()
 
-        self.train_steps = 0
+        self.train_steps = self.eval_epoch = 0
 
         self.best_rd_cost_per_stage = None
 
@@ -71,6 +71,8 @@ class TrainerABC(metaclass=ABCMeta):
                 self.record.update(item, encode_results[item].item())
         rd_cost = self.record.get("rd_cost", average=True)
         info = self.record.display()
+        self.tensorboard.add_text(tag="Test", text_string=info, global_step=self.eval_epoch)
+        self.eval_epoch += 1
         self.logger.info(info)
         return rd_cost
 

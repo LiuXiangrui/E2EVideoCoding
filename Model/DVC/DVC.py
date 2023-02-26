@@ -39,27 +39,29 @@ class InterFrameCodecDVC(nn.Module):
     def encode(self, frame: torch.Tensor, ref: torch.Tensor) -> tuple:
         motion_fields = self.motion_est(frame, ref=ref)
 
-        enc_results = self.motion_compression.compress(motion_fields)
-        motion_strings = enc_results["strings"]
-        motion_hyper_shape = enc_results["shape"]
+        motion_enc_results = self.motion_compression.compress(motion_fields)
+        motion_strings = motion_enc_results["strings"]
+        motion_hyper_shape = motion_enc_results["shape"]
         motion_fields_hat = self.motion_compression.decompress(strings=motion_strings, shape=motion_hyper_shape)["x_hat"]
 
         _, pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
         pred = torch.clamp(pred, min=0.0, max=1.0)
 
-        enc_results = self.residues_compression.compress(frame - pred)
-        frame_strings = enc_results["strings"]
-        frame_hyper_shape = enc_results["shape"]
+        frame_enc_results = self.residues_compression.compress(frame - pred)
 
-        return motion_strings, motion_hyper_shape, frame_strings, frame_hyper_shape
+        return motion_enc_results, frame_enc_results
 
     @torch.no_grad()
-    def decode(self, ref: torch.Tensor, motion_strings: list, motion_hyper_shape: list, frame_strings: list, frame_hyper_shape: list) -> torch.Tensor:
+    def decode(self, ref: torch.Tensor, motion_enc_results: dict, frame_enc_results: dict) -> torch.Tensor:
+        motion_strings = motion_enc_results["strings"]
+        motion_hyper_shape = motion_enc_results["shape"]
         motion_fields_hat = self.motion_compression.decompress(strings=motion_strings, shape=motion_hyper_shape)["x_hat"]
 
         _, pred = self.motion_comp(ref, motion_fields=motion_fields_hat)
         pred = torch.clamp(pred, min=0.0, max=1.0)
 
+        frame_strings = frame_enc_results["strings"]
+        frame_hyper_shape = frame_enc_results["shape"]
         residues_hat = self.residues_compression.decompress(strings=frame_strings, shape=frame_hyper_shape)["x_hat"]
 
         frame_hat = pred + residues_hat

@@ -11,6 +11,25 @@ available_model = {
     "DCVC": InterFrameCodecDCVC,
     "FVC": InterFrameCodecFVC
 }
+
+quality_idx_map = {
+    1: [256, 3],
+    2: [512, 4],
+    3: [1024, 5],
+    4: [2048, 6]
+}
+
+
+header_info_bit_depth_map = {
+    "width": 16,
+    "height": 16,
+    "num_frames": 16,
+    "quality_idx": 8,
+    "gop_size": 8,
+}
+
+from Model.Common.Utils import write_uintx, read_uintx, write_bytes, read_bytes
+
 torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
@@ -23,12 +42,17 @@ with open(parser.parse_args().config, mode='r') as f:
     network_args = Arguments(args=json.load(f)["Network"])
     testing_args = Arguments(args=json.load(f)["Testing"])
 
-intra_frame_codec = IntraFrameCodec(quality=testing_args.intra_quality, metric="mse", pretrained=True)
+
+gop = testing_args.gop
+
+
+quality_idx = testing_args.quality_idx
+inter_lambda, intra_quality = quality_idx_map[quality_idx]
+
+intra_frame_codec = IntraFrameCodec(quality=intra_quality, metric="mse", pretrained=True)
 inter_frame_codec = available_model[network_args.network]
 
 record = Record(item_list=["psnr, bpp"])
-
-gop = testing_args.gop
 
 import torch
 
@@ -40,74 +64,127 @@ inter_frame_codec.eval()
 def test_sequences(frames: list):
     pass
 
+
+def write_header_stream(f, frames) -> None:
+    width = int(frames[0].shape[-1])
+    height = int(frames[0].shape[-2])
+    num_frames = int(len(frames))
+
+    write_uintx(f, value=gop, x=header_info_bit_depth_map["gop_size"])
+    write_uintx(f, value=quality_idx, x=header_info_bit_depth_map["quality_idx"])
+    write_uintx(f, value=num_frames, x=header_info_bit_depth_map["num_frames"])
+    write_uintx(f, value=width, x=header_info_bit_depth_map["width"])
+    write_uintx(f, value=height, x=header_info_bit_depth_map["height"])
+
+
+def read_header_stream(f) -> dict:
+    gop_size = read_uintx(f, x=header_info_bit_depth_map["gop_size"])
+    quality_idx = read_uintx(f, x=header_info_bit_depth_map["quality_idx"])
+    num_frames = read_uintx(f, x=header_info_bit_depth_map["num_frames"])
+    width = read_uintx(f, x=header_info_bit_depth_map["width"])
+    height = read_uintx(f, x=header_info_bit_depth_map["height"])
+
+    head_info = {
+        "gop_size": gop_size,
+        "quality_idx": quality_idx,
+        "num_frames": num_frames,
+        "width": width,
+        "height": height
+    }
+
+    return head_info
+
+
+def write_frame_stream(enc_results: dict, f) -> None:
+    shape = enc_results["shape"]
+    strings = enc_results["strings"]
+
+    for value in shape:  # write the shape of features needed to be decoded by entropy bottleneck
+        write_uintx(f, value=value, x=16)
+
+    num_string = len(strings)
+    write_uintx(f, value=num_string, x=8)  # write how many strings need to write
+
+    for string in strings:
+        string = string[0]  # note that string is a list containing 1 element, and I don't know why?
+        len_string = len(string)
+        write_uintx(f, value=len_string, x=32)  # write the length of the string
+        write_bytes(f, values=string)  # write the string
+
+
+def read_frame_stream(f) -> dict:
+    # read the shape of features needed to be decoded by entropy bottleneck
+    shape = [read_uintx(f, x=16) for _ in range(2)]
+
+    num_string = read_uintx(f, x=8)  # write how many strings need to write
+
+    strings = [[read_bytes(f, read_uintx(f, x=32)), ] for _ in range(num_string)]
+
+    return {"strings": strings, "shape": shape}
+
+
 @torch.no_grad()
-def encode_sequence(frames: list):
+def compress_gop(frames: list) -> list:
     decode_frame_buffer = DecodedFrameBuffer()
-    # I frame coding
-    intra_frames = frames[::gop]
 
-    for intra_frame in intra_frames:
-        intra_frame = intra_frame.to("cuda" if testing_args.gpu else "cpu")
+    enc_results_list = []
 
-        num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
+    # compress intra frame
+    intra_frame = frames[0].to("cuda" if testing_args.gpu else "cpu")
+    enc_results = intra_frame_codec.compress(intra_frame)
+    enc_results_list.append(enc_results)
 
-        enc_results = IntraFrameCodec.compress()
-
-
-        enc_results = intra_frame_codec(intra_frame)
-    intra_frame_hat = torch.clamp(enc_results["x_hat"], min=0.0, max=1.0)
+    # decompress intra frame and add it to decoded buffer
+    dec_results = intra_frame_codec.decompress(strings=enc_results["strings"], shape=enc_results["shape"])
+    intra_frame_hat = torch.clamp(dec_results["x_hat"], min=0., max=1.)
     decode_frame_buffer.update(intra_frame_hat)
 
-    intra_dist = self.distortion_metric(intra_frame_hat, intra_frame)
-    intra_psnr = cal_psnr(intra_dist)
-    intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
-
-    inter_frames = [frames[:, i, :, :, :].to("cuda" if self.training_args.gpu else "cpu") for i in
-                    range(1, num_available_frames)]
-
-    alignment = [torch.zeros_like(intra_frame_hat), ]
-
-    rd_cost_avg = aux_loss_avg = align_psnr_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
-
-    # P frame coding
-    for frame in inter_frames:
-        ref = decode_frame_buffer.get_frames(num_frames=1)[0]
-
-        frame_hat, aligned_ref, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
-
-        align_dist = self.distortion_metric(aligned_ref, frame)
-        align_psnr = cal_psnr(align_dist)
-
-        recon_dist = self.distortion_metric(frame_hat, frame)
-        recon_psnr = cal_psnr(recon_dist)
-
-        motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
-        frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
-
-        rate = motion_bpp * int(stage == TrainingStage.ME or stage == TrainingStage.ALL) + frame_bpp * int(
-            stage == TrainingStage.CONTEXTUAL_CODING or stage == TrainingStage.ALL)
-        distortion = align_dist if stage == TrainingStage.ME else recon_dist
-
-        rd_cost = self.training_args.lambda_weight * distortion + rate
-
-        aux_loss = self.inter_frame_codec.aux_loss()
-
-        rd_cost_avg += rd_cost / len(inter_frames)
-        aux_loss_avg += aux_loss / len(inter_frames)
-
-        recon_psnr_avg_inter += recon_psnr / len(inter_frames)
-        align_psnr_avg += align_psnr / len(inter_frames)
-
-        frame_bpp_avg += frame_bpp / len(inter_frames)
-        motion_bpp_avg += motion_bpp / len(inter_frames)
-
+    for frame in frames[1:]:
+        ref = decode_frame_buffer.get_frames()
+        motion_enc_results, frame_enc_results = inter_frame_codec.encode(frame, ref=ref)
+        frame_hat = inter_frame_codec.decode(ref=ref, motion_enc_results=motion_enc_results, frame_enc_results=frame_enc_results)
         decode_frame_buffer.update(frame_hat)
 
-        alignment.append(aligned_ref)
+        enc_results_list.append(motion_enc_results)
+        enc_results_list.append(frame_enc_results)
 
-    recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / num_available_frames
+    return enc_results_list
 
-    total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
-    total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / num_available_frames
 
-    for
+@torch.no_grad()
+def compress_sequence(frames: list, bin_path: str) -> None:
+    with open(bin_path, mode='wb') as f:
+        # write header bitstream to file
+        write_header_stream(f, frames)
+
+        enc_results = []
+        # compress frames
+        gop_frames = [frames[i: i + gop - 1] for i in range(0, len(frames), gop)]
+        for frames in gop_frames:
+            enc_results.extend(compress_gop(frames))
+        # write bitstream to file
+        for results in enc_results:
+            write_frame_stream(results, f=f)
+
+
+@torch.no_grad()
+def decompress_gop(dec_results_list) -> list:
+    decode_frame_buffer = DecodedFrameBuffer()
+
+    # decompress intra frame
+
+
+
+@torch.no_grad()
+def decompress_sequence(bin_path: str) -> list:
+    with open(bin_path, mode='rb') as f:
+        # read header bit
+        head_info = read_header_stream(f)
+
+        gop_size = head_info["gop_size"]
+        num_frames = head_info["num_frames"]
+        width = head_info["width"]
+        height = head_info["height"]
+
+        frames = [None, ] * num_frames
+

@@ -276,12 +276,12 @@ bit_depth_map = {
 }
 
 
-def write_uintx(f, value: int, bit_depth: int) -> None:
-    f.write(struct.pack(">{}".format(bit_depth_map[bit_depth]), value))
+def write_uintx(f, value: int, x: int) -> None:
+    f.write(struct.pack(">{}".format(bit_depth_map[x]), value))
 
 
-def read_uintx(f, bit_depth: int) -> int:
-    return struct.unpack(">{}".format(bit_depth_map[bit_depth]), f.read(struct.calcsize(bit_depth_map[bit_depth])))[0]
+def read_uintx(f, x: int) -> int:
+    return struct.unpack(">{}".format(bit_depth_map[x]), f.read(struct.calcsize(bit_depth_map[x])))[0]
 
 
 def write_bytes(f, values, fmt=">{:d}s"):
