@@ -35,6 +35,8 @@ header_info_bit_depth_map = {
     "num_frames": 16,
     "quality_idx": 8,
     "gop_size": 8,
+    "width": 16,
+    "height": 16
 }
 
 quality_idx_to_network_cfg_map = {
