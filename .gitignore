@@ -165,6 +165,3 @@ dmypy.json
 
 # macOS dir files
 .DS_Store
-
-# training configurations
-Train/*.json

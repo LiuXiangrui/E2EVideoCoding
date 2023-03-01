@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 from enum import Enum, unique
 
 import torch
@@ -6,27 +8,28 @@ from torch.optim.lr_scheduler import MultiStepLR
 
 from Model.Common.Trainer import TrainerABC
 from Model.Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
-from FVC import InterFrameCodecFVC
+from Model.FVC import InterFrameCodecFVC
 
 
 @unique
 class TrainingStage(Enum):
-    WITHOUT_FUSION = 0,
-    WITH_FUSION = 1,
-    NOT_AVAILABLE = 2
+    Training = 0
+    NOT_AVAILABLE = 1
 
 
 class TrainerFVC(TrainerABC):
     def __init__(self) -> None:
         super().__init__()
-        self.inter_frame_codec = InterFrameCodecFVC(N=self.training_args.N, M=self.training_args.M)
+        self.inter_frame_codec = InterFrameCodecFVC(network_config=self.network_args.serialize())
+
+        self.best_rd_cost_per_stage = {TrainingStage(i): 1e9 for i in range(len(TrainingStage))}
 
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         assert stage != TrainingStage.NOT_AVAILABLE
 
         decode_frame_buffer = DecodedFrameBuffer()
 
-        num_available_frames = 2 if stage == TrainingStage.WITHOUT_FUSION else 4
+        num_available_frames = 2
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
@@ -48,9 +51,9 @@ class TrainerFVC(TrainerABC):
 
         # P frame coding
         for frame in inter_frames:
-            ref_frames_list = decode_frame_buffer.get_frames(num_frames=1 if stage == TrainingStage.WITHOUT_FUSION else min(len(decode_frame_buffer), 3))
+            ref = decode_frame_buffer.get_frames(num_frames=1)[0]
 
-            frame_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref_frames_list=ref_frames_list, fusion=(stage != TrainingStage.WITHOUT_FUSION))
+            frame_hat, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
 
             recon_dist = self.distortion_metric(frame_hat, frame)
             recon_psnr = cal_psnr(recon_dist)
@@ -96,6 +99,10 @@ class TrainerFVC(TrainerABC):
                 self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
                                             img_tensor=enc_results["pristine"][i].clone().detach().cpu())
 
+    def lr_decay(self, stage: TrainingStage) -> None:
+        self.schedulers[stage].step()
+        self.aux_schedulers[stage].step()
+
     def infer_stage(self, epoch: int) -> TrainingStage:
         epoch_milestone = self.training_args.epoch_milestone if isinstance(self.training_args.epoch_milestone, list) else [self.training_args.epoch_milestone, ]
         assert len(epoch_milestone) == TrainingStage.NOT_AVAILABLE.value
@@ -105,19 +112,16 @@ class TrainerFVC(TrainerABC):
 
     def init_optimizer(self) -> tuple[dict, dict]:
         lr_milestone = self.training_args.lr_milestone
-        assert len(lr_milestone) == 2
+        assert len(lr_milestone) == 1
 
-        params_w_o_fusion, _ = separate_aux_and_normal_params(self.inter_frame_codec, exclude_module_list=self.inter_frame_codec.post_processing)
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
 
         optimizers = {
-            TrainingStage.WITHOUT_FUSION:  Adam([{'params': params_w_o_fusion, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
-            TrainingStage.WITH_FUSION: Adam([{'params': params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
+            TrainingStage.Training:  Adam([{'params': params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
         }
 
         aux_optimizers = {
-            TrainingStage.WITHOUT_FUSION: Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
-            TrainingStage.WITH_FUSION: Adam([{'params': aux_params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1]),
+            TrainingStage.Training: Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[0]),
         }
 
         return optimizers, aux_optimizers
@@ -126,17 +130,13 @@ class TrainerFVC(TrainerABC):
         lr_decay_milestone = self.training_args.lr_decay_milestone
 
         schedulers = {
-            TrainingStage.WITHOUT_FUSION: MultiStepLR(optimizer=self.optimizers[TrainingStage.WITHOUT_FUSION], last_epoch=start_epoch - 1,
-                                                      milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
-            TrainingStage.WITH_FUSION: MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_FUSION], last_epoch=start_epoch - 1,
-                                                   milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
+            TrainingStage.Training: MultiStepLR(optimizer=self.optimizers[TrainingStage.Training], last_epoch=start_epoch - 1,
+                                                milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
         }
 
         aux_schedulers = {
-            TrainingStage.WITHOUT_FUSION: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITHOUT_FUSION], last_epoch=start_epoch - 1,
-                                                      milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
-            TrainingStage.WITH_FUSION: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_FUSION], last_epoch=start_epoch - 1,
-                                                   milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
+            TrainingStage.Training: MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.Training], last_epoch=start_epoch - 1,
+                                                milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor),
         }
 
         return schedulers, aux_schedulers

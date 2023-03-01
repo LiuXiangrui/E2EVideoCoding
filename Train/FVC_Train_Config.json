@@ -1,0 +1,37 @@
+{
+  "Network":
+  {
+    "network": "FVC",
+    "N_motion": 128,
+    "M_motion": 128,
+    "N_residues": 128,
+    "M_residues": 128
+  },
+  "Training":
+  {
+    "gpu": true,
+    "lambda_weight": 1024,
+    "batch_size": 4,
+    "intra_quality": 5,
+    "dataset_root": "D:\\root",
+    "epoch_milestone": [155],
+    "lr_milestone": [5e-5],
+    "lr_decay_milestone": [148],
+    "lr_decay_factor": 0.1,
+    "eval_epochs": 5,
+    "save_epochs": 5,
+    "save_directory": "D:\\ExperimentsFVC",
+    "verbose": true,
+    "record_items": [
+      "rd_cost",
+      "recon_psnr", "recon_psnr_inter",
+      "motion_bpp", "frame_bpp", "total_bpp", "total_bpp_inter"]
+  },
+  "Testing":
+  {
+    "model_weight": "",
+    "use_gpu": true,
+    "sequences_config": "",
+    "gop": 32
+  }
+}
