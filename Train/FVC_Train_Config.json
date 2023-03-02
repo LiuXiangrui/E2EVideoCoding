@@ -10,6 +10,7 @@
   "Training":
   {
     "gpu": true,
+    "metric": "mse",
     "lambda_weight": 1024,
     "batch_size": 4,
     "intra_quality": 5,
@@ -18,10 +19,12 @@
     "lr_milestone": [5e-5],
     "lr_decay_milestone": [148],
     "lr_decay_factor": 0.1,
+    "grad_clip_max_norm": 20,
     "eval_epochs": 5,
     "save_epochs": 5,
     "save_directory": "D:\\ExperimentsFVC",
     "verbose": true,
+    "imgs_visualization_interval": 2000,
     "record_items": [
       "rd_cost",
       "recon_psnr", "recon_psnr_inter",

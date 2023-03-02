@@ -9,16 +9,19 @@
   "Training":
   {
     "gpu": true,
+    "metric": "mse",
     "lambda_weight": 1024,
     "batch_size": 4,
     "intra_quality": 5,
     "dataset_root": "D:\\root",
     "epoch_milestone": [50, 50, 50, 50],
     "lr_milestone": [1e-4, 1e-5],
+    "grad_clip_max_norm": 20,
     "eval_epochs": 5,
     "save_epochs": 5,
     "save_directory": "D:\\ExperimentsDCVC",
     "verbose": true,
+    "imgs_visualization_interval": 2000,
     "record_items": [
       "rd_cost",
       "recon_psnr", "recon_psnr_inter", "align_psnr",

@@ -29,7 +29,10 @@ class TrainerABC(metaclass=ABCMeta):
 
         self.train_dataloader, self.eval_dataloader = self.init_dataloader()
 
-        self.distortion_metric = nn.MSELoss()
+        if self.training_args.metric == "mse":
+            self.distortion_metric = nn.MSELoss()
+        else:
+            self.distortion_metric = None
 
         self.train_steps = self.eval_epoch = 0
 
@@ -96,14 +99,14 @@ class TrainerABC(metaclass=ABCMeta):
         optimizer = self.optimizers[stage]
         loss = enc_results["rd_cost"]
         loss.backward()
-        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
+        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=self.training_args.grad_clip_max_norm)
         optimizer.step()
         optimizer.zero_grad()
 
         aux_optimizer = self.aux_optimizers[stage]
         loss = enc_results["aux_loss"]
         loss.backward()
-        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=20)
+        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=self.training_args.grad_clip_max_norm)
         aux_optimizer.step()
         aux_optimizer.zero_grad()
 

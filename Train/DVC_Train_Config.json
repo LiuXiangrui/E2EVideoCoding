@@ -10,6 +10,7 @@
   "Training":
   {
     "gpu": true,
+    "metric": "mse",
     "lambda_weight": 1024,
     "batch_size": 4,
     "intra_quality": 5,
@@ -19,10 +20,12 @@
     "lr_milestone": [1e-4],
     "lr_decay_milestone": [200],
     "lr_decay_factor": 0.1,
+    "grad_clip_max_norm": 20,
     "eval_epochs": 5,
     "save_epochs": 5,
     "save_directory": "/public/xiangrliu3/Experiments/DVC",
     "verbose": true,
+    "imgs_visualization_interval": 2000,
     "record_items": [
       "rd_cost",
       "recon_psnr", "recon_psnr_inter", "align_psnr", "pred_psnr",
