@@ -31,6 +31,8 @@ class MotionCompression(JointAutoregressiveCompression):
         self.entropy_bottleneck = EntropyBottleneck(channels=N)
         self.gaussian_conditional = GaussianConditional(None)
 
+        self.M = M
+
 
 class ContextualCompression(JointAutoregressiveCompression):
     def __init__(self, N: int = 64, M: int = 96):
@@ -58,6 +60,8 @@ class ContextualCompression(JointAutoregressiveCompression):
         self.context_prediction = MaskedConv2d(in_channels=M, out_channels=M * 2, kernel_size=5, padding=2, stride=1)
         self.entropy_bottleneck = EntropyBottleneck(channels=N)
         self.gaussian_conditional = GaussianConditional(None)
+
+        self.M = M
 
     def forward(self, x: torch.Tensor, ctx: torch.Tensor = None) -> dict:
         temporal_prior = self.temporal_prior_encoder(ctx)

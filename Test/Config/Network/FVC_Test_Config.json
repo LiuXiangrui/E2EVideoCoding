@@ -1,0 +1,17 @@
+{
+  "Network":
+  {
+    "name": "FVC",
+    "N_motion": 128,
+    "M_motion": 128,
+    "N_residues": 128,
+    "M_residues": 128
+  },
+  "Testing":
+  {
+    "model_weight": "",
+    "use_gpu": true,
+    "sequences_config": "",
+    "gop": 32
+  }
+}

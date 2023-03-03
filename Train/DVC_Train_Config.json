@@ -1,7 +1,7 @@
 {
   "Network":
   {
-    "network": "DVC",
+    "name": "DVC",
     "N_motion": 128,
     "M_motion": 128,
     "N_residues": 128,
@@ -30,12 +30,5 @@
       "rd_cost",
       "recon_psnr", "recon_psnr_inter", "align_psnr", "pred_psnr",
       "motion_bpp", "frame_bpp", "total_bpp", "total_bpp_inter"]
-  },
-  "Testing":
-  {
-    "model_weight": "",
-    "use_gpu": true,
-    "sequences_config": "",
-    "gop": 32
   }
 }

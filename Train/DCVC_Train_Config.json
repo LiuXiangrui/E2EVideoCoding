@@ -1,6 +1,7 @@
 {
   "Network":
   {
+    "name": "DCVC",
     "N_motion": 64,
     "M_motion": 128,
     "N_frame": 64,

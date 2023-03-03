@@ -27,11 +27,13 @@ class FactorizedCompression(CompressionModel):
             }
         }
 
+    @torch.no_grad()
     def compress(self, x: torch.Tensor) -> dict:
         y = self.analysis_transform(x)
         y_strings = self.entropy_bottleneck.compress(y)
         return {"strings": [y_strings], "shape": y.size()[-2:]}
 
+    @torch.no_grad()
     def decompress(self, strings: list, shape: list) -> dict:
         assert isinstance(strings, list) and len(strings) == 1
         y_hat = self.entropy_bottleneck.decompress(strings[0], shape)
@@ -62,6 +64,7 @@ class HyperpriorCompression(CompressionModel):
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
 
+    @torch.no_grad()
     def compress(self, x: torch.Tensor) -> dict:
         y = self.analysis_transform(x)
         z = self.hyper_analysis_transform(torch.abs(y))
@@ -71,15 +74,17 @@ class HyperpriorCompression(CompressionModel):
 
         scales_hat = self.hyper_synthesis_transform(z_hat)
         indexes = self.gaussian_conditional.build_indexes(scales_hat)
-        y_strings = self.gaussian_conditional.compress(y, torch.IntTensor(indexes))
+
+        y_strings = self.gaussian_conditional.compress(y, indexes)
         return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
 
+    @torch.no_grad()
     def decompress(self, strings: list, shape: list) -> dict:
         assert isinstance(strings, list) and len(strings) == 2
         z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
         scales_hat = self.hyper_synthesis_transform(z_hat)
         indexes = self.gaussian_conditional.build_indexes(scales_hat)
-        y_hat = self.gaussian_conditional.decompress(strings[0], torch.IntTensor(indexes), z_hat.dtype)
+        y_hat = self.gaussian_conditional.decompress(strings[0], indexes, z_hat.dtype)
         x_hat = self.synthesis_transform(y_hat)
         return {"x_hat": x_hat}
 
@@ -115,6 +120,7 @@ class JointAutoregressiveCompression(CompressionModel):
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
 
+    @torch.no_grad()
     def compress(self, x: torch.Tensor) -> dict:
         y = self.analysis_transform(x)
         z = self.hyper_analysis_transform(y)
@@ -141,6 +147,7 @@ class JointAutoregressiveCompression(CompressionModel):
 
         return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
 
+    @torch.no_grad()
     def _compress_ar(self, y_hat: torch.Tensor, params: torch.Tensor, height: int, width: int, kernel_size: int, padding: int) -> bytes:
         cdf = self.gaussian_conditional.quantized_cdf.tolist()
         cdf_lengths = self.gaussian_conditional.cdf_length.tolist()
@@ -179,6 +186,7 @@ class JointAutoregressiveCompression(CompressionModel):
 
         return string
 
+    @torch.no_grad()
     def decompress(self, strings: list, shape: list) -> dict:
         assert isinstance(strings, list) and len(strings) == 2
 
@@ -203,6 +211,7 @@ class JointAutoregressiveCompression(CompressionModel):
         x_hat = self.synthesis_transform(y_hat)
         return {"x_hat": x_hat}
 
+    @torch.no_grad()
     def _decompress_ar(self, y_string: bytes, y_hat: torch.Tensor, params: torch.Tensor, height: int, width: int, kernel_size: int, padding: int):
         cdf = self.gaussian_conditional.quantized_cdf.tolist()
         cdf_lengths = self.gaussian_conditional.cdf_length.tolist()
