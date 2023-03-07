@@ -57,8 +57,19 @@ quality_idx_to_network_cfg_map = {
 
 
 class Encoder:
-    def __init__(self, gop_size: int, quality_idx: int, gpu: bool, intra_frame_codec: nn.Module,
-                 inter_frame_codec: nn.Module, network_cfg_map: dict, ckpt_folder: str) -> None:
+    def __init__(self, gop_size: int, quality_idx: int, gpu: bool,
+                 intra_frame_codec: nn.Module, inter_frame_codec: nn.Module,
+                 network_cfg_map: dict,
+                 ckpt_folder: str) -> None:
+        """
+        :param gop_size: gop size
+        :param quality_idx: quality index which indicates the quality index of intra codec and lambda of inter codec
+        :param gpu: indicates if we use GPU to encode
+        :param intra_frame_codec: intra codec model
+        :param inter_frame_codec: inter codec model
+        :param network_cfg_map: network configure map of the specified inter codec
+        :param ckpt_folder: folder where model weights are stored
+        """
         super().__init__()
 
         self.gop_size = gop_size
@@ -78,7 +89,17 @@ class Encoder:
         self.inter_frame_codec.load_state_dict(torch.load(inter_model_path, map_location=self.device)["inter_frame_codec"])
 
     @torch.no_grad()
-    def compress_sequence(self, seq_path: str, height: int, width: int, num_frames: int, bin_path: str) -> float:
+    def compress_sequence(self, seq_path: str, height: int, width: int, num_frames: int, bin_path: str, res_path: str = None) -> float:
+        """
+
+        :param seq_path: path of the sequence to be encoded
+        :param height: height of the sequence to be encoded
+        :param width: width of the sequence to be encoded
+        :param num_frames: number of frames to be encoded
+        :param bin_path: path of the bitstreams
+        :param res_path: (optional) saving path for encoding results (bpp and PSNR)
+        :return bpp: bpp of the sequence
+        """
         with open(bin_path, mode='wb') as f:
             # load yuv sequence and convert to rgb frames
             frames = self.load_yuv(seq_path=seq_path, height=height, width=width, num_frames=num_frames)
@@ -93,50 +114,93 @@ class Encoder:
             frames = [self.pad_frame_to_64x(frame=frame) for frame in frames]
 
             enc_results = []
+            psnr_per_frame = []
+            bpp_per_frame = []
             # compress gop
             gop_frames = [frames[i: i + self.gop_size] for i in range(0, len(frames), self.gop_size)]
-            for gop_id, gop in enumerate(gop_frames):
-                print("Compressing GOP {}".format(gop_id))
-                enc_results.extend(self.compress_gop(gop))
+            for gop_idx, gop in enumerate(gop_frames):
+                print("Compressing GOP {}".format(gop_idx))
+                compress_results = self.compress_gop(gop_idx=gop_idx, frames=gop)
+                enc_results.extend(compress_results["enc_results_list"])
+                psnr_per_frame.extend(compress_results["psnr_per_frame"])
+                bpp_per_frame.extend(compress_results["bpp_per_frame"])
+
             # write bitstream to file
             for results in enc_results:
                 self.write_frame_stream(results, f=f)
 
-        bpp = self.calculate_bpp(bin_path=bin_path, num_pixels=num_pixels)
+        with open(res_path, mode='r') as f:
+            average_psnr = sum(psnr_per_frame) / num_frames
+            average_bpp = sum(bpp_per_frame) / num_frames
 
-        return bpp
+            total_bpp = self.calculate_bpp(bin_path=bin_path, num_pixels=num_pixels)
+
+            res_enc = {"Average": {"PSNR": average_psnr, "Frame bpp": average_bpp, "Total bpp": total_bpp},
+                       "Per Frame": {"frame {}".format(i): {"PSNR": psnr_per_frame[i], "bpp": bpp_per_frame[i]} for i in range(num_frames)}}
+
+            json.dump(res_enc, f)
+
+        return total_bpp
 
     @torch.no_grad()
-    def compress_gop(self, frames: list) -> list:
+    def compress_gop(self, gop_idx: int, frames: list) -> dict:
         decode_frame_buffer = DecodedFrameBuffer()
 
         enc_results_list = []
-        print("Compressing intra frame")
-        # compress intra frame
-        intra_frame = frames[0].to(self.device)
-        enc_results = self.intra_frame_codec.compress(intra_frame)
-        enc_results_list.append(enc_results)
+        psnr_per_frame = []
+        bpp_per_frame = []
+        with tqdm(total=len(frames), ncols=80) as bar:
+            bar.set_description('GOP: {}'.format(gop_idx))
 
-        # decompress intra frame and add it to decoded buffer
-        intra_frame_hat = self.intra_frame_codec.decompress(strings=enc_results["strings"], shape=enc_results["shape"])["x_hat"]
-        intra_frame_hat = torch.clamp(intra_frame_hat, min=0., max=1.)
-        decode_frame_buffer.update(intra_frame_hat)
+            # compress intra frame
+            intra_frame = frames[0].to(self.device)
+            enc_results = self.intra_frame_codec.compress(intra_frame)
+            enc_results_list.append(enc_results)
 
-        for idx, frame in enumerate(frames[1:]):
-            print("Compressing the {}-th frame".format(idx + 1))
-            ref = decode_frame_buffer.get_frames(num_frames=1)[0]
-            motion_enc_results, frame_enc_results = self.inter_frame_codec.encode(frame.to(self.device), ref=ref.to(self.device))
-            frame_hat = self.inter_frame_codec.decode(ref=ref, motion_dec_results=motion_enc_results, frame_dec_results=frame_enc_results)
-            decode_frame_buffer.update(frame_hat)
+            # decompress intra frame and add it to decoded buffer
+            intra_frame_hat = self.intra_frame_codec.decompress(strings=enc_results["strings"], shape=enc_results["shape"])["x_hat"]
+            intra_frame_hat = torch.clamp(intra_frame_hat, min=0., max=1.)
+            decode_frame_buffer.update(intra_frame_hat)
 
-            mse = torch.mean((frame.cpu() - frame_hat.cpu()) ** 2)
+            mse = torch.mean((intra_frame.cpu() - intra_frame_hat.cpu()) ** 2)
             psnr = -10 * torch.log10(mse)
-            print("PSNR = ", psnr.item())
 
-            enc_results_list.append(motion_enc_results)
-            enc_results_list.append(frame_enc_results)
+            bits = 2 * 16 + 8 + 32 + 8 * len(enc_results["strings"])  # TODO: check 8*len is right?
+            num_pixels = intra_frame.shape[0] * intra_frame.shape[1] * intra_frame.shape[2] * intra_frame.shape[3]
+            bpp = bits / num_pixels
 
-        return enc_results_list
+            bar.set_postfix({"frame": "1", "PSNR": "{:.2f}".format(psnr), "bpp": "{:.2f}".format(bpp)})
+            bar.update(1)
+
+            psnr_per_frame.append(psnr)
+            bpp_per_frame.append(bpp)
+
+            for idx, frame in enumerate(frames[1:]):
+
+                print("Compressing the {}-th frame".format(idx + 1))
+                ref = decode_frame_buffer.get_frames(num_frames=1)[0]
+                motion_enc_results, frame_enc_results = self.inter_frame_codec.encode(frame.to(self.device), ref=ref.to(self.device))
+                frame_hat = self.inter_frame_codec.decode(ref=ref, motion_dec_results=motion_enc_results, frame_dec_results=frame_enc_results)
+                decode_frame_buffer.update(frame_hat)
+
+                mse = torch.mean((frame.cpu() - frame_hat.cpu()) ** 2)
+                psnr = -10 * torch.log10(mse)
+
+                motion_bits = 2 * 16 + 8 + 32 + 8 * len(motion_enc_results["strings"])  # TODO: check 8*len is right?
+                frame_bits = 2 * 16 + 8 + 32 + 8 * len(frame_enc_results["strings"])  # TODO: check 8*len is right?
+                num_pixels = intra_frame.shape[0] * intra_frame.shape[1] * intra_frame.shape[2] * intra_frame.shape[3]
+                bpp = (motion_bits + frame_bits) / num_pixels
+
+                bar.set_postfix({"frame": "{}".format(idx + 1), "PSNR": "{:.2f}".format(psnr), "bpp": "{:.2f}".format(bpp)})
+                bar.update(1)
+
+                psnr_per_frame.append(psnr)
+                bpp_per_frame.append(bpp)
+
+                enc_results_list.append(motion_enc_results)
+                enc_results_list.append(frame_enc_results)
+
+        return {"enc_results_list": enc_results_list, "psnr_per_frame": psnr_per_frame, "bpp_per_frame": bpp_per_frame}
 
     def write_header_stream(self, f, frames) -> None:
         num_frames = int(len(frames))
