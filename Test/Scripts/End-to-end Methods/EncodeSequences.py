@@ -4,6 +4,7 @@ import os
 import struct
 
 import numpy as np
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -93,9 +94,10 @@ class Encoder:
 
             enc_results = []
             # compress gop
-            gop_frames = [frames[i: i + self.gop_size - 1] for i in range(0, len(frames), self.gop_size)]
-            for frames in gop_frames:
-                enc_results.extend(self.compress_gop(frames))
+            gop_frames = [frames[i: i + self.gop_size] for i in range(0, len(frames), self.gop_size)]
+            for gop_id, gop in enumerate(gop_frames):
+                print("Compressing GOP {}".format(gop_id))
+                enc_results.extend(self.compress_gop(gop))
             # write bitstream to file
             for results in enc_results:
                 self.write_frame_stream(results, f=f)
@@ -109,7 +111,7 @@ class Encoder:
         decode_frame_buffer = DecodedFrameBuffer()
 
         enc_results_list = []
-
+        print("Compressing intra frame")
         # compress intra frame
         intra_frame = frames[0].to(self.device)
         enc_results = self.intra_frame_codec.compress(intra_frame)
@@ -121,10 +123,15 @@ class Encoder:
         decode_frame_buffer.update(intra_frame_hat)
 
         for idx, frame in enumerate(frames[1:]):
+            print("Compressing the {}-th frame".format(idx + 1))
             ref = decode_frame_buffer.get_frames(num_frames=1)[0]
             motion_enc_results, frame_enc_results = self.inter_frame_codec.encode(frame.to(self.device), ref=ref.to(self.device))
             frame_hat = self.inter_frame_codec.decode(ref=ref, motion_dec_results=motion_enc_results, frame_dec_results=frame_enc_results)
             decode_frame_buffer.update(frame_hat)
+
+            mse = torch.mean((frame.cpu() - frame_hat.cpu()) ** 2)
+            psnr = -10 * torch.log10(mse)
+            print("PSNR = ", psnr.item())
 
             enc_results_list.append(motion_enc_results)
             enc_results_list.append(frame_enc_results)
@@ -272,12 +279,20 @@ class Decoder:
             self.inter_frame_codec.load_state_dict(torch.load(inter_model_path, map_location=self.device)["inter_frame_codec"])
 
             # decompress frame bitstream
-            decoded_results = [self.read_frame_stream(f) for _ in range(2 * num_frames - 1)]
+            num_gops = num_frames // gop_size + int(num_frames % gop_size != 0)
+
+            gop_results = []
+
+            available_frames = num_frames
+            for gop in range(num_gops):
+                num_frames_in_gop = min(gop_size, available_frames)
+                gop_results.append([self.read_frame_stream(f) for _ in range(2 * num_frames_in_gop - 1)])
+                available_frames -= gop_size
 
         # decompress frames from bitstream
         decoded_frames = []
-        gop_results = [decoded_results[i: i + gop_size - 1] for i in range(0, num_frames, gop_size)]
-        for results in gop_results:
+        for gop, results in enumerate(gop_results):
+            print("Decoding GOP {}".format(gop))
             decoded_frames.extend(self.decompress_gop(results))
 
         # crop to original size
@@ -289,6 +304,7 @@ class Decoder:
     def decompress_gop(self, dec_results_list) -> list:
         decoded_frame_buffer = DecodedFrameBuffer()
 
+        print("Decoding I frame")
         # decompress intra frame
         dec_results_intra = dec_results_list[0]
 
@@ -298,6 +314,7 @@ class Decoder:
 
         dec_results_list = dec_results_list[1:]
         for frame_idx in range(len(dec_results_list) // 2):  # note that each frame has two
+            print("Decoding {}-th frame".format(frame_idx + 1))
             ref = decoded_frame_buffer.get_frames(num_frames=1)[0]
             motion_dec_results = dec_results_list[2 * frame_idx]
             frame_dec_results = dec_results_list[2 * frame_idx + 1]
@@ -467,6 +484,8 @@ def test_all_classes():
     os.makedirs(results_folder, exist_ok=True)
 
     for class_cfg in os.listdir(seq_cfg_folder):
+        if os.path.splitext(class_cfg)[-1] != '.json':
+            continue
         class_name = os.path.splitext(class_cfg)[0]
         folder_per_class = os.path.join(compress_folder, class_name)
         os.makedirs(folder_per_class, exist_ok=True)
@@ -483,13 +502,14 @@ def test_all_classes():
 
                 rec_seq_path = os.path.join(folder_per_class, seq_name + ".yuv")
                 bin_path = os.path.join(folder_per_class, seq_name + ".bin")
-
+                print("Encoding start")
                 bpp = encoder.compress_sequence(seq_path=seq_path, bin_path=bin_path,
                                                 height=seq_cfg_dict[seq_name]["SourceHeight"], width=seq_cfg_dict[seq_name]["SourceWidth"],
                                                 num_frames=seq_cfg_dict[seq_name]["FramesToBeEncoded"]
                                                 )
+                print("Decoding start")
                 decoder.decompress_sequence(rec_path=rec_seq_path, bin_path=bin_path)
-
+                print("PSNR calculation start")
                 psnr = calculate_yuv_psnr(ori_path=seq_path, rec_path=rec_seq_path,
                                           height=seq_cfg_dict[seq_name]["SourceHeight"], width=seq_cfg_dict[seq_name]["SourceWidth"],
                                           num_frames=seq_cfg_dict[seq_name]["FramesToBeEncoded"])
