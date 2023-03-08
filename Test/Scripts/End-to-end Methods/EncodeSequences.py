@@ -108,7 +108,7 @@ class Encoder:
             self.write_header_stream(f, frames)
 
             # note that number of pixels need to calculate before padding
-            num_pixels = frames[0].shape[-2] * frames[0].shape[-1] * len(frames)
+            num_pixels_per_frame = frames[0].shape[-2] * frames[0].shape[-1]  # num pixels per frame
 
             # pad to 64x
             frames = [self.pad_frame_to_64x(frame=frame) for frame in frames]
@@ -119,8 +119,7 @@ class Encoder:
             # compress gop
             gop_frames = [frames[i: i + self.gop_size] for i in range(0, len(frames), self.gop_size)]
             for gop_idx, gop in enumerate(gop_frames):
-                print("Compressing GOP {}".format(gop_idx))
-                compress_results = self.compress_gop(gop_idx=gop_idx, frames=gop)
+                compress_results = self.compress_gop(gop_idx=gop_idx, frames=gop, num_pixels_per_frame=num_pixels_per_frame)
                 enc_results.extend(compress_results["enc_results_list"])
                 psnr_per_frame.extend(compress_results["psnr_per_frame"])
                 bpp_per_frame.extend(compress_results["bpp_per_frame"])
@@ -129,21 +128,32 @@ class Encoder:
             for results in enc_results:
                 self.write_frame_stream(results, f=f)
 
-        with open(res_path, mode='r') as f:
+        with open(res_path, mode='w') as f:
             average_psnr = sum(psnr_per_frame) / num_frames
             average_bpp = sum(bpp_per_frame) / num_frames
 
-            total_bpp = self.calculate_bpp(bin_path=bin_path, num_pixels=num_pixels)
+            total_bpp = self.calculate_bpp(bin_path=bin_path, num_pixels_per_sequence=num_pixels_per_frame * num_frames)
 
-            res_enc = {"Average": {"PSNR": average_psnr, "Frame bpp": average_bpp, "Total bpp": total_bpp},
-                       "Per Frame": {"frame {}".format(i): {"PSNR": psnr_per_frame[i], "bpp": bpp_per_frame[i]} for i in range(num_frames)}}
+            res_enc = {
+                "Average": {
+                    "PSNR": float(average_psnr),
+                    "Frame bpp": float(average_bpp),
+                    "Total bpp": float(total_bpp)
+                },
+                "Per Frame": {
+                    "frame {}".format(i): {
+                        "PSNR": float(psnr_per_frame[i]),
+                        "bpp": float(bpp_per_frame[i])
+                    } for i in range(num_frames)
+                }
+            }
 
             json.dump(res_enc, f)
 
         return total_bpp
 
     @torch.no_grad()
-    def compress_gop(self, gop_idx: int, frames: list) -> dict:
+    def compress_gop(self, gop_idx: int, frames: list, num_pixels_per_frame: int) -> dict:
         decode_frame_buffer = DecodedFrameBuffer()
 
         enc_results_list = []
@@ -165,9 +175,8 @@ class Encoder:
             mse = torch.mean((intra_frame.cpu() - intra_frame_hat.cpu()) ** 2)
             psnr = -10 * torch.log10(mse)
 
-            bits = 2 * 16 + 8 + 32 + 8 * len(enc_results["strings"])  # TODO: check 8*len is right?
-            num_pixels = intra_frame.shape[0] * intra_frame.shape[1] * intra_frame.shape[2] * intra_frame.shape[3]
-            bpp = bits / num_pixels
+            bits = 2 * 16 + 8 + 32 + 8 * sum([len(strings[0]) for strings in enc_results["strings"]])
+            bpp = bits / num_pixels_per_frame
 
             bar.set_postfix({"frame": "1", "PSNR": "{:.2f}".format(psnr), "bpp": "{:.2f}".format(bpp)})
             bar.update(1)
@@ -176,8 +185,6 @@ class Encoder:
             bpp_per_frame.append(bpp)
 
             for idx, frame in enumerate(frames[1:]):
-
-                print("Compressing the {}-th frame".format(idx + 1))
                 ref = decode_frame_buffer.get_frames(num_frames=1)[0]
                 motion_enc_results, frame_enc_results = self.inter_frame_codec.encode(frame.to(self.device), ref=ref.to(self.device))
                 frame_hat = self.inter_frame_codec.decode(ref=ref, motion_dec_results=motion_enc_results, frame_dec_results=frame_enc_results)
@@ -186,10 +193,9 @@ class Encoder:
                 mse = torch.mean((frame.cpu() - frame_hat.cpu()) ** 2)
                 psnr = -10 * torch.log10(mse)
 
-                motion_bits = 2 * 16 + 8 + 32 + 8 * len(motion_enc_results["strings"])  # TODO: check 8*len is right?
-                frame_bits = 2 * 16 + 8 + 32 + 8 * len(frame_enc_results["strings"])  # TODO: check 8*len is right?
-                num_pixels = intra_frame.shape[0] * intra_frame.shape[1] * intra_frame.shape[2] * intra_frame.shape[3]
-                bpp = (motion_bits + frame_bits) / num_pixels
+                motion_bits = 2 * 16 + 8 + 32 + 8 * sum([len(strings[0]) for strings in motion_enc_results["strings"]])
+                frame_bits = 2 * 16 + 8 + 32 + 8 * sum([len(strings[0]) for strings in frame_enc_results["strings"]])
+                bpp = (motion_bits + frame_bits) / num_pixels_per_frame
 
                 bar.set_postfix({"frame": "{}".format(idx + 1), "PSNR": "{:.2f}".format(psnr), "bpp": "{:.2f}".format(bpp)})
                 bar.update(1)
@@ -289,9 +295,9 @@ class Encoder:
         return rgb_frame
 
     @staticmethod
-    def calculate_bpp(bin_path: str, num_pixels: int):
+    def calculate_bpp(bin_path: str, num_pixels_per_sequence: int):
         bits = os.path.getsize(bin_path) * 8
-        bpp = bits / num_pixels
+        bpp = bits / num_pixels_per_sequence
         return bpp
 
     @staticmethod
@@ -566,10 +572,11 @@ def test_all_classes():
 
                 rec_seq_path = os.path.join(folder_per_class, seq_name + ".yuv")
                 bin_path = os.path.join(folder_per_class, seq_name + ".bin")
+                res_path = os.path.join(folder_per_class, seq_name + ".json")
                 print("Encoding start")
                 bpp = encoder.compress_sequence(seq_path=seq_path, bin_path=bin_path,
                                                 height=seq_cfg_dict[seq_name]["SourceHeight"], width=seq_cfg_dict[seq_name]["SourceWidth"],
-                                                num_frames=seq_cfg_dict[seq_name]["FramesToBeEncoded"]
+                                                num_frames=seq_cfg_dict[seq_name]["FramesToBeEncoded"], res_path=res_path
                                                 )
                 print("Decoding start")
                 decoder.decompress_sequence(rec_path=rec_seq_path, bin_path=bin_path)
