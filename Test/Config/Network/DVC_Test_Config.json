@@ -9,12 +9,12 @@
   },
   "Testing":
   {
-    "ckpt_folder": "C:\\Users\\xiangrliu3\\Desktop\\DVC",
+    "ckpt_folder": "C:\\Users\\xiangrliu3\\Desktop\\123\\DVC",
     "use_gpu": true,
-    "seq_cfg_folder": "C:\\Users\\xiangrliu3\\Desktop\\Sequences",
+    "seq_cfg_folder": "C:\\Users\\xiangrliu3\\Desktop\\123\\Sequences",
     "gop_size": 32,
     "quality_idx": 3,
-    "compress_folder": "C:\\Users\\xiangrliu3\\Desktop\\DVC",
-    "results_folder": "C:\\Users\\xiangrliu3\\Desktop\\DVC"
+    "compress_folder": "C:\\Users\\xiangrliu3\\Desktop\\123\\DVC",
+    "results_folder": "C:\\Users\\xiangrliu3\\Desktop\\123\\DVC"
   }
 }
