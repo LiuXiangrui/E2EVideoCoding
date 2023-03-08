@@ -73,7 +73,7 @@ where D is the reconstruction error of input frames and R is the bitrate of both
 
 ### Test Conditions for End-to-end Methods
 - The test process is depicted as follows:
-![Process of the test of end-to-end methods.svg](assets%2Ffigures%2FProcess%20of%20the%20test%20of%20end-to-end%20methods.svg)
+![Process of the test of end-to-end methods.png](assets%2Ffigures%2FProcess%20of%20the%20test%20of%20end-to-end%20methods.png)
 
 - The conversion of color space will cause neglectable distortion.
 - The resolution of sequences is padded into the integral times of 64.
