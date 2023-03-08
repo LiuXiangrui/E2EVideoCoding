@@ -138,7 +138,7 @@ class Encoder:
                 "Average": {
                     "PSNR": float(average_psnr),
                     "Frame bpp": float(average_bpp),
-                    "Total bpp": float(total_bpp)
+                    "Bin bpp": float(total_bpp)
                 },
                 "Per Frame": {
                     "frame {}".format(i): {
@@ -310,11 +310,10 @@ class Encoder:
         f.write(struct.pack(">{}".format(bit_depth_map[x]), value))
 
     @staticmethod
-    def write_bytes(f, values, fmt=">{:d}s"):
+    def write_bytes(f, values, fmt=">{:d}s") -> None:
         if len(values) == 0:
             return
         f.write(struct.pack(fmt.format(len(values)), values))
-        return len(values) * 1
 
 
 class Decoder:
