@@ -78,7 +78,7 @@ where D is the reconstruction error of input frames and R is the bitrate of both
 - The conversion of color space will cause neglectable distortion.
 - The resolution of sequences is padded into the integral times of 64.
 - The distortion is measured in the YCbCr color space as follows:
-$$PSNR=(6*PSNRY+PSNRU+PSNRV)/8.$$
+$$PSNR=(6*PSNR_Y+PSNR_U+PSNR_V)/8.$$
 - The rate is measured as follows:
 $$Bpp=BitstreamSize / Resolution / NumFrames.$$
 - The header bits are stipulated as follows:
