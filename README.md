@@ -45,7 +45,6 @@ where D is the reconstruction error of input frames and R is the bitrate of both
 | TRAINING | RD loss |  1e-4, 1e-5   | 148, 7 |
 
 - Note that the multi-frame fusion module is removed in the FVC (Anchor).
-- 
 - Examples of training configuration for each network are provided in {root}/Train.
 
 

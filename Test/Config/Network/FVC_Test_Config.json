@@ -9,9 +9,13 @@
   },
   "Testing":
   {
-    "model_weight": "",
+    "ckpt_folder": "C:\\Users\\xiangrliu3\\Desktop\\E2EVideoCodingModels\\FVC",
     "use_gpu": true,
-    "sequences_config": "",
-    "gop": 32
+    "seq_cfg_folder": "C:\\Users\\xiangrliu3\\Desktop\\Config\\Sequences",
+    "gop_size": 32,
+    "quality_idx": 3,
+    "compress_folder": "C:\\Users\\xiangrliu3\\Desktop\\FVC",
+    "results_folder": "C:\\Users\\xiangrliu3\\Desktop\\FVC",
+    "decode_buffer_capacity": 1
   }
 }

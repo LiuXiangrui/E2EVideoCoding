@@ -53,13 +53,19 @@ quality_idx_to_network_cfg_map = {
         3: {"N_motion": 64, "M_motion": 128, "N_frame": 64, "M_frame": 96},
         4: {"N_motion": 64, "M_motion": 128, "N_frame": 64, "M_frame": 96}
     },
+    "FVC": {
+        1: {"N_motion": 128, "M_motion": 128, "N_residues": 128, "M_residues": 128},
+        2: {"N_motion": 128, "M_motion": 128, "N_residues": 128, "M_residues": 128},
+        3: {"N_motion": 128, "M_motion": 128, "N_residues": 128, "M_residues": 128},
+        4: {"N_motion": 128, "M_motion": 128, "N_residues": 128, "M_residues": 128}
+    }
 }
 
 
 class Encoder:
     def __init__(self, gop_size: int, quality_idx: int, gpu: bool,
                  intra_frame_codec: nn.Module, inter_frame_codec: nn.Module,
-                 network_cfg_map: dict,
+                 network_cfg_map: dict, decode_buffer_capacity: int,
                  ckpt_folder: str) -> None:
         """
         :param gop_size: gop size
@@ -75,6 +81,7 @@ class Encoder:
         self.gop_size = gop_size
         self.quality_idx = quality_idx
         self.device = "cuda" if gpu else "cpu"
+        self.decode_buffer_capacity = decode_buffer_capacity
 
         self.intra_frame_codec = intra_frame_codec(quality=quality_idx_map[quality_idx][1], metric="mse", pretrained=True)
         self.inter_frame_codec = inter_frame_codec(network_config=network_cfg_map[quality_idx])
@@ -102,7 +109,7 @@ class Encoder:
         """
         with open(bin_path, mode='wb') as f:
             # load yuv sequence and convert to rgb frames
-            frames = self.load_yuv(seq_path=seq_path, height=height, width=width, num_frames=num_frames)
+            frames, num_frames = self.load_yuv(seq_path=seq_path, height=height, width=width, num_frames=num_frames)
 
             # write header bitstream to file
             self.write_header_stream(f, frames)
@@ -154,7 +161,7 @@ class Encoder:
 
     @torch.no_grad()
     def compress_gop(self, gop_idx: int, frames: list, num_pixels_per_frame: int) -> dict:
-        decode_frame_buffer = DecodedFrameBuffer()
+        decode_frame_buffer = DecodedFrameBuffer(capacity=self.decode_buffer_capacity)
 
         enc_results_list = []
         psnr_per_frame = []
@@ -241,12 +248,12 @@ class Encoder:
         pad, _ = compute_padding(in_h=h, in_w=w, min_div=64)
         return F.pad(frame, pad, mode="constant", value=0)
 
-    def load_yuv(self, seq_path: str, height: int, width: int, num_frames: int) -> list:
-        yuv_frames = self.read_yuv_420p(yuv_filepath=seq_path, height=height, width=width, num_frames=num_frames)
+    def load_yuv(self, seq_path: str, height: int, width: int, num_frames: int) -> tuple:
+        yuv_frames, num_frames = self.read_yuv_420p(yuv_filepath=seq_path, height=height, width=width, num_frames=num_frames)
         rgb_frames = [self.yuv420_to_rgb(yuv_frame=yuv_frame) for yuv_frame in yuv_frames]
 
         frames = [torch.from_numpy(frame.astype(np.float32) / 255.).permute(2, 0, 1).unsqueeze(dim=0) for frame in rgb_frames]
-        return frames
+        return frames, num_frames
 
     @staticmethod
     def read_yuv_420p(yuv_filepath: str, height: int, width: int, num_frames: int) -> list:
@@ -257,14 +264,18 @@ class Encoder:
         with open(yuv_filepath, mode='rb') as f:
             frame_counter = 0
             while frame_counter < num_frames:
-                y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
-                u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
-                                    (chroma_height, chroma_width)).astype(np.uint8)
-                v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
-                                    (chroma_height, chroma_width)).astype(np.uint8)
-                frames.append([y_data, u_data, v_data])
-                frame_counter += 1
-        return frames
+                try:
+                    y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
+                    u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
+                                        (chroma_height, chroma_width)).astype(np.uint8)
+                    v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
+                                        (chroma_height, chroma_width)).astype(np.uint8)
+                    frames.append([y_data, u_data, v_data])
+                    frame_counter += 1
+                except:
+                    print("Configuration items FramesToBeEncoded={} exceeds {} frames that sequence {} has.".format(num_frames, frame_counter, yuv_filepath))
+                    break
+        return frames, frame_counter
 
     @staticmethod
     def yuv420_to_rgb(yuv_frame: list) -> np.ndarray:
@@ -317,12 +328,16 @@ class Encoder:
 
 
 class Decoder:
-    def __init__(self, gpu: bool, intra_frame_codec: nn.Module, inter_frame_codec: nn.Module, network_cfg_map: dict, ckpt_folder: str):
+    def __init__(self, gpu: bool, intra_frame_codec: nn.Module, inter_frame_codec: nn.Module,
+                 network_cfg_map: dict, decode_buffer_capacity: int,
+                 ckpt_folder: str):
+        self.decode_buffer_capacity = decode_buffer_capacity
         self.device = "cuda" if gpu else "cpu"
         self.ckpt_folder = ckpt_folder
         self.network_cfg_map = network_cfg_map
-        self.intra_frame_codec = intra_frame_codec
-        self.inter_frame_codec = inter_frame_codec
+        self.intra_frame_codec_class = intra_frame_codec
+        self.inter_frame_codec_class = inter_frame_codec
+        self.inter_frame_codec = self.intra_frame_codec = None
 
     @torch.no_grad()
     def decompress_sequence(self, bin_path: str, rec_path: str):
@@ -336,13 +351,11 @@ class Decoder:
             width = header_info["width"]
 
             # initialize network and load model weights
-            self.intra_frame_codec = self.intra_frame_codec(quality=quality_idx_map[quality_idx][1], metric="mse", pretrained=True)
-            self.inter_frame_codec = self.inter_frame_codec(network_config=self.network_cfg_map[quality_idx])
+            self.intra_frame_codec = self.intra_frame_codec_class(quality=quality_idx_map[quality_idx][1], metric="mse", pretrained=True)
+            self.inter_frame_codec = self.inter_frame_codec_class(network_config=self.network_cfg_map[quality_idx])
 
-            self.intra_frame_codec.to(self.device)
-            self.inter_frame_codec.to(self.device)
-            self.intra_frame_codec.eval()
-            self.inter_frame_codec.eval()
+            self.intra_frame_codec.to(self.device).eval()
+            self.inter_frame_codec.to(self.device).eval()
 
             inter_model_path = os.path.join(self.ckpt_folder, "{}.pth".format(quality_idx_map[quality_idx][0]))
             self.inter_frame_codec.load_state_dict(torch.load(inter_model_path, map_location=self.device)["inter_frame_codec"])
@@ -371,7 +384,8 @@ class Decoder:
 
     @torch.no_grad()
     def decompress_gop(self, dec_results_list) -> list:
-        decoded_frame_buffer = DecodedFrameBuffer()
+        decoded_frames = []
+        decoded_frame_buffer = DecodedFrameBuffer(capacity=self.decode_buffer_capacity)
 
         print("Decoding I frame")
         # decompress intra frame
@@ -380,17 +394,18 @@ class Decoder:
         dec_results = self.intra_frame_codec.decompress(strings=dec_results_intra["strings"], shape=dec_results_intra["shape"])
         intra_frame_hat = torch.clamp(dec_results["x_hat"], min=0., max=1.)
         decoded_frame_buffer.update(intra_frame_hat)
+        decoded_frames.append(intra_frame_hat.cpu().clone())
 
         dec_results_list = dec_results_list[1:]
-        for frame_idx in range(len(dec_results_list) // 2):  # note that each frame has two
+        for frame_idx in range(len(dec_results_list) // 2):  # note that each frame has two bitstreams, i.e., motion and residues
             print("Decoding {}-th frame".format(frame_idx + 1))
             ref = decoded_frame_buffer.get_frames(num_frames=1)[0]
             motion_dec_results = dec_results_list[2 * frame_idx]
             frame_dec_results = dec_results_list[2 * frame_idx + 1]
             frame_hat = self.inter_frame_codec.decode(ref=ref, motion_dec_results=motion_dec_results, frame_dec_results=frame_dec_results)
             decoded_frame_buffer.update(frame_hat)
+            decoded_frames.append(frame_hat.cpu().clone())
 
-        decoded_frames = decoded_frame_buffer.get_frames(num_frames=len(decoded_frame_buffer))
         return decoded_frames
 
     def read_header_stream(self, f) -> dict:
@@ -536,14 +551,18 @@ def test_all_classes():
 
     ckpt_folder = testing_args.ckpt_folder
 
+    decode_buffer_capacity = testing_args.decode_buffer_capacity
+
     intra_frame_codec = IntraFrameCodec
     inter_frame_codec = available_model[network_args.name]
 
     encoder = Encoder(gop_size=testing_args.gop_size, quality_idx=quality_idx,
                       intra_frame_codec=intra_frame_codec, inter_frame_codec=inter_frame_codec,
+                      decode_buffer_capacity=decode_buffer_capacity,
                       ckpt_folder=ckpt_folder, gpu=testing_args.use_gpu, network_cfg_map=quality_idx_to_network_cfg_map[network_args.name])
 
     decoder = Decoder(intra_frame_codec=intra_frame_codec, inter_frame_codec=inter_frame_codec,
+                      decode_buffer_capacity=decode_buffer_capacity,
                       ckpt_folder=ckpt_folder, gpu=testing_args.use_gpu, network_cfg_map=quality_idx_to_network_cfg_map[network_args.name])
 
     seq_cfg_folder = testing_args.seq_cfg_folder
@@ -572,7 +591,7 @@ def test_all_classes():
                 rec_seq_path = os.path.join(folder_per_class, seq_name + ".yuv")
                 bin_path = os.path.join(folder_per_class, seq_name + ".bin")
                 res_path = os.path.join(folder_per_class, seq_name + ".json")
-                print("Encoding start")
+                print("Encoding {} start".format(seq_name))
                 bpp = encoder.compress_sequence(seq_path=seq_path, bin_path=bin_path,
                                                 height=seq_cfg_dict[seq_name]["SourceHeight"], width=seq_cfg_dict[seq_name]["SourceWidth"],
                                                 num_frames=seq_cfg_dict[seq_name]["FramesToBeEncoded"], res_path=res_path
@@ -583,7 +602,6 @@ def test_all_classes():
                 psnr = calculate_yuv_psnr(ori_path=seq_path, rec_path=rec_seq_path,
                                           height=seq_cfg_dict[seq_name]["SourceHeight"], width=seq_cfg_dict[seq_name]["SourceWidth"],
                                           num_frames=seq_cfg_dict[seq_name]["FramesToBeEncoded"])
-
                 rd_record[seq_name] = [bpp, psnr]
 
         average_bpp = sum([rd_record[seq_name][0] for seq_name in rd_record.keys()]) / len(rd_record)

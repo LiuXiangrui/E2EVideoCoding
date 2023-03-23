@@ -6,6 +6,7 @@ import json
 import logging
 import math
 from pathlib import Path
+import sys
 
 import torch
 from prettytable import PrettyTable
@@ -130,8 +131,9 @@ def init() -> tuple:
 
 
 class DecodedFrameBuffer:
-    def __init__(self) -> None:
+    def __init__(self, capacity: int = sys.maxsize) -> None:
         super().__init__()
+        self.capacity = capacity
         self.frame_buffer = list()
 
     def get_frames(self, num_frames: int = 1) -> list:
@@ -140,6 +142,8 @@ class DecodedFrameBuffer:
 
     def update(self, frame: torch.Tensor) -> None:
         self.frame_buffer.append(frame.clone().detach())
+        while len(self.frame_buffer) > self.capacity:
+            self.frame_buffer.pop(0)
 
     def __len__(self) -> int:
         return len(self.frame_buffer)
