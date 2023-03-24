@@ -205,3 +205,10 @@ def optical_flow_warp(x: torch.Tensor, motion_fields: torch.Tensor) -> torch.Ten
     warped_x = F.grid_sample(input=x, grid=(grid + motion_fields).permute(0, 2, 3, 1),
                              mode="bilinear", padding_mode="border", align_corners=False)
     return warped_x
+
+
+def clip_gradients(optimizer, grad_clip: float) -> None:
+    for group in optimizer.param_groups:
+        for param in group["params"]:
+            if param.grad is not None:
+                param.grad.data.clamp_(-grad_clip, grad_clip)

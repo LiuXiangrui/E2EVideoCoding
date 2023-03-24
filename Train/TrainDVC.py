@@ -5,18 +5,20 @@ from enum import Enum, unique
 import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
-
+from torch.utils.data.dataloader import DataLoader
 from Model.Common.Trainer import TrainerABC
-from Model.Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
+from Model.Common.Utils import calculate_bpp, cal_psnr, separate_aux_and_normal_params
 from Model.DVC import InterFrameCodecDVC
+from Model.Common.Dataset import Vimeo90KDatasetDVC
+
+from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip
 
 
 @unique
 class TrainingStage(Enum):
     WITH_INTER_LOSS = 0
     ONLY_RD_LOSS = 1
-    ROLLING = 2
-    NOT_AVAILABLE = 3
+    NOT_AVAILABLE = 2
 
 
 class TrainerDVC(TrainerABC):
@@ -24,109 +26,53 @@ class TrainerDVC(TrainerABC):
         super().__init__()
         self.inter_frame_codec = InterFrameCodecDVC(network_config=self.network_args.serialize())
 
-        self.best_rd_cost_per_stage = {TrainingStage(i): 1e9 for i in range(len(TrainingStage))}
-
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         assert stage != TrainingStage.NOT_AVAILABLE
 
-        decode_frame_buffer = DecodedFrameBuffer()
+        frame, ref = torch.chunk(frames, chunks=2, dim=1)
 
-        num_available_frames = 7 if stage == TrainingStage.ROLLING else 2
-        frames = frames[:, :num_available_frames, :, :, :]
+        frame_hat, aligned_ref, pred, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
 
-        # I frame coding
-        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.training_args.gpu else "cpu")
-        num_pixels = intra_frame.shape[0] * intra_frame.shape[2] * intra_frame.shape[3]
-        with torch.no_grad():
-            enc_results = self.intra_frame_codec(intra_frame)
-        intra_frame_hat = torch.clamp(enc_results["x_hat"], min=0.0, max=1.0)
-        decode_frame_buffer.update(intra_frame_hat)
+        align_dist = self.distortion_metric(aligned_ref, frame)
+        align_psnr = cal_psnr(align_dist)
 
-        intra_dist = self.distortion_metric(intra_frame_hat, intra_frame)
-        intra_psnr = cal_psnr(intra_dist)
-        intra_bpp = calculate_bpp(enc_results["likelihoods"], num_pixels=num_pixels)
+        pred_dist = self.distortion_metric(pred, frame)
+        pred_psnr = cal_psnr(pred_dist)
 
-        inter_frames = [frames[:, i, :, :, :].to("cuda" if self.training_args.gpu else "cpu") for i in range(1, num_available_frames)]
+        recon_dist = self.distortion_metric(frame_hat, frame)
+        recon_psnr = cal_psnr(recon_dist)
 
-        prediction = [torch.zeros_like(intra_frame_hat), ]
+        distortion = int(stage == TrainingStage.WITH_INTER_LOSS) * 0.1 * (align_dist + pred_dist) + recon_dist
 
-        rd_cost_avg = aux_loss_avg = align_psnr_avg = pred_psnr_avg = recon_psnr_avg_inter = motion_bpp_avg = frame_bpp_avg = 0.
+        num_pixels = frame.shape[0] * frame.shape[2] * frame.shape[3]
+        motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
+        frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
+        rate = frame_bpp + motion_bpp
 
-        # P frame coding
-        for frame in inter_frames:
-            ref = decode_frame_buffer.get_frames(num_frames=1)[0]
+        rd_cost = self.training_args.lambda_weight * distortion + rate
 
-            frame_hat, aligned_ref, pred, motion_likelihoods, frame_likelihoods = self.inter_frame_codec(frame, ref=ref)
-
-            align_dist = self.distortion_metric(aligned_ref, frame)
-            align_psnr = cal_psnr(align_dist)
-
-            pred_dist = self.distortion_metric(pred, frame)
-            pred_psnr = cal_psnr(pred_dist)
-
-            recon_dist = self.distortion_metric(frame_hat, frame)
-            recon_psnr = cal_psnr(recon_dist)
-
-            motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
-            frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
-
-            rate = frame_bpp + motion_bpp
-            distortion = 0.1 * (align_dist + pred_dist) + recon_dist if stage == TrainingStage.WITH_INTER_LOSS else recon_dist
-
-            rd_cost = self.training_args.lambda_weight * distortion + rate
-
-            aux_loss = self.inter_frame_codec.aux_loss()
-
-            rd_cost_avg += rd_cost / len(inter_frames)
-            aux_loss_avg += aux_loss / len(inter_frames)
-
-            recon_psnr_avg_inter += recon_psnr / len(inter_frames)
-            align_psnr_avg += align_psnr / len(inter_frames)
-            pred_psnr_avg += pred_psnr / len(inter_frames)
-
-            frame_bpp_avg += frame_bpp / len(inter_frames)
-            motion_bpp_avg += motion_bpp / len(inter_frames)
-
-            decode_frame_buffer.update(frame_hat)
-
-            prediction.append(pred)
-
-        recon_psnr_avg = (recon_psnr_avg_inter * len(inter_frames) + intra_psnr) / num_available_frames
-
-        total_bpp_avg_inter = motion_bpp_avg + frame_bpp_avg
-        total_bpp_avg = (total_bpp_avg_inter * len(inter_frames) + intra_bpp) / num_available_frames
+        aux_loss = self.inter_frame_codec.aux_loss()
 
         return {
-            "aux_loss": aux_loss_avg,
-            "rd_cost": rd_cost_avg,
-            "align_psnr": align_psnr_avg,
-            "pred_psnr": pred_psnr_avg,
-            "recon_psnr_inter": recon_psnr_avg_inter,
-            "recon_psnr": recon_psnr_avg,
-            "motion_bpp": motion_bpp_avg, "frame_bpp": frame_bpp_avg,
-            "total_bpp_inter": total_bpp_avg_inter, "total_bpp": total_bpp_avg,
-            "reconstruction": decode_frame_buffer.get_frames(num_frames=num_available_frames),
-            "pristine": [frames[:, i, :, :, :] for i in range(num_available_frames)],
-            "prediction": prediction
+            "aux_loss": aux_loss,
+            "rd_cost": rd_cost,
+            "align_psnr": align_psnr,
+            "pred_psnr": pred_psnr,
+            "recon_psnr": recon_psnr,
+            "motion_bpp": motion_bpp,
+            "frame_bpp": frame_bpp,
+            "total_bpp": rate
         }
 
     def visualize(self, enc_results: dict, stage: TrainingStage) -> None:
         self.tensorboard.add_scalars(main_tag="Training/PSNR", global_step=self.train_steps,
-                                     tag_scalar_dict={"Reconstruction": enc_results["recon_psnr_inter"],
+                                     tag_scalar_dict={"Reconstruction": enc_results["recon_psnr"],
                                                       "Prediction": enc_results["pred_psnr"],
                                                       "Alignment": enc_results["align_psnr"]})
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
-                                     tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
-        if self.train_steps % self.training_args.imgs_visualization_interval == 0:
-            assert len(enc_results["pristine"]) == len(enc_results["reconstruction"]) and len(enc_results["pristine"]) == len(enc_results["prediction"])
-
-            for i in range(len(enc_results["pristine"])):
-                self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
-                                            img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())
-                self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
-                                            img_tensor=enc_results["pristine"][i].clone().detach().cpu())
-                self.tensorboard.add_images(tag="Training/Prediction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
-                                            img_tensor=enc_results["prediction"][i].clone().detach().cpu())
+                                     tag_scalar_dict={"Motion": enc_results["motion_bpp"],
+                                                      "Frame": enc_results["frame_bpp"],
+                                                      "Total": enc_results["total_bpp"]})
 
     def lr_decay(self, stage: TrainingStage) -> None:
         self.schedulers[stage].step()
@@ -151,13 +97,11 @@ class TrainerDVC(TrainerABC):
         optimizers = {
             TrainingStage.WITH_INTER_LOSS: optimizer,
             TrainingStage.ONLY_RD_LOSS: optimizer,
-            TrainingStage.ROLLING: optimizer
         }
 
         aux_optimizers = {
             TrainingStage.WITH_INTER_LOSS: aux_optimizer,
             TrainingStage.ONLY_RD_LOSS: aux_optimizer,
-            TrainingStage.ROLLING: aux_optimizer
         }
         return optimizers, aux_optimizers
 
@@ -172,16 +116,22 @@ class TrainerDVC(TrainerABC):
         schedulers = {
             TrainingStage.WITH_INTER_LOSS: scheduler,
             TrainingStage.ONLY_RD_LOSS: scheduler,
-            TrainingStage.ROLLING: scheduler
         }
 
         aux_schedulers = {
             TrainingStage.WITH_INTER_LOSS: aux_scheduler,
             TrainingStage.ONLY_RD_LOSS: aux_scheduler,
-            TrainingStage.ROLLING: aux_scheduler
         }
 
         return schedulers, aux_schedulers
+
+    def init_dataloader(self) -> tuple:
+        train_dataset = Vimeo90KDatasetDVC(root=self.training_args.dataset_root, split_filepath=self.training_args.split_filepath,
+                                           transform=Compose([RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)]))
+        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.training_args.batch_size, shuffle=True)
+
+        eval_dataloader = None
+        return train_dataloader, eval_dataloader
 
 
 if __name__ == "__main__":

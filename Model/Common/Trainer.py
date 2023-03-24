@@ -9,7 +9,7 @@ from torchvision.transforms import RandomCrop
 from tqdm import tqdm
 
 from Model.Common.Dataset import Vimeo90KDataset
-from Model.Common.Utils import Record, init
+from Model.Common.Utils import Record, init, clip_gradients
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
@@ -59,11 +59,14 @@ class TrainerABC(metaclass=ABCMeta):
             print("\nEpoch {0} Stage '{1}".format(str(epoch), stage))
             self.train_one_epoch(stage=stage)
 
-            if epoch % self.training_args.eval_epochs == 0:
+            if epoch % self.training_args.eval_epochs == 0 and self.eval_dataloader is not None:
                 rd_cost = self.evaluate(stage=stage)
-                if epoch % self.training_args.save_epochs == 0 or rd_cost < self.best_rd_cost_per_stage[stage]:
+                if rd_cost < self.best_rd_cost_per_stage[stage]:
                     self.best_rd_cost_per_stage[stage] = min(self.best_rd_cost_per_stage[stage], rd_cost)
                     self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
+
+            if self.eval_dataloader is None and epoch % self.training_args.save_epochs == 0:  # skip evaluation
+                self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
 
     @torch.no_grad()
     def evaluate(self, stage: Enum) -> float:
@@ -99,14 +102,13 @@ class TrainerABC(metaclass=ABCMeta):
         optimizer = self.optimizers[stage]
         loss = enc_results["rd_cost"]
         loss.backward()
-        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=self.training_args.grad_clip_max_norm)
+        clip_gradients(optimizer, grad_clip=self.training_args.grad_clip)
         optimizer.step()
         optimizer.zero_grad()
 
         aux_optimizer = self.aux_optimizers[stage]
         loss = enc_results["aux_loss"]
         loss.backward()
-        nn.utils.clip_grad_norm_(self.inter_frame_codec.parameters(), max_norm=self.training_args.grad_clip_max_norm)
         aux_optimizer.step()
         aux_optimizer.zero_grad()
 

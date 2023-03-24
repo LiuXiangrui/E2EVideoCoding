@@ -149,7 +149,7 @@
             "Level": 4.1
         },
         "videoSRC22_1920x1080_24": {
-            "FramesToBeEncoded": 150,
+            "FramesToBeEncoded": 120,
             "FrameRate": 30,
             "SourceWidth": 1920,
             "SourceHeight": 1080,

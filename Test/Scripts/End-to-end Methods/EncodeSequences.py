@@ -504,24 +504,34 @@ def calculate_yuv_psnr(ori_path: str, rec_path: str, height: int, width: int, nu
     with open(ori_path, mode='rb') as f:
         frame_counter = 0
         while frame_counter < num_frames:
-            y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
-            u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
-                                (chroma_height, chroma_width)).astype(np.uint8)
-            v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
-                                (chroma_height, chroma_width)).astype(np.uint8)
-            ori_frames.append([y_data, u_data, v_data])
-            frame_counter += 1
+            try:
+                y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
+                u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
+                                    (chroma_height, chroma_width)).astype(np.uint8)
+                v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
+                                    (chroma_height, chroma_width)).astype(np.uint8)
+                ori_frames.append([y_data, u_data, v_data])
+                frame_counter += 1
+            except:
+                print("Configuration items FramesToBeEncoded={} exceeds {} frames that sequence {} has.".format(
+                    num_frames, frame_counter, ori_path))
+                break
 
     with open(rec_path, mode='rb') as f:
         frame_counter = 0
         while frame_counter < num_frames:
-            y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
-            u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
-                                (chroma_height, chroma_width)).astype(np.uint8)
-            v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
-                                (chroma_height, chroma_width)).astype(np.uint8)
-            rec_frames.append([y_data, u_data, v_data])
-            frame_counter += 1
+            try:
+                y_data = np.reshape(np.frombuffer(f.read(height * width), 'B'), (height, width)).astype(np.uint8)
+                u_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
+                                    (chroma_height, chroma_width)).astype(np.uint8)
+                v_data = np.reshape(np.frombuffer(f.read(chroma_height * chroma_width), 'B'),
+                                    (chroma_height, chroma_width)).astype(np.uint8)
+                rec_frames.append([y_data, u_data, v_data])
+                frame_counter += 1
+            except:
+                print("Configuration items FramesToBeEncoded={} exceeds {} frames that sequence {} has.".format(
+                    num_frames, frame_counter, rec_path))
+                break
 
     for ori_frame, rec_frame in zip(ori_frames, rec_frames):
         y_mse = np.mean((ori_frame[0] - rec_frame[0]) ** 2)
