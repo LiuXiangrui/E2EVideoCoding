@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 from compressai.zoo import cheng2020_anchor as IntraFrameCodec
 from torch.utils.data.dataloader import DataLoader
-from torchvision.transforms import RandomCrop
+from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip, RandomCrop
 from tqdm import tqdm
 
-from Model.Common.Dataset import Vimeo90KDataset
+from Model.Common.Dataset import Vimeo90KDataset, Vimeo90KDatasetDVC
 from Model.Common.Utils import Record, init, clip_gradients
 
 torch.backends.cudnn.enabled = True
@@ -59,14 +59,15 @@ class TrainerABC(metaclass=ABCMeta):
             print("\nEpoch {0} Stage '{1}".format(str(epoch), stage))
             self.train_one_epoch(stage=stage)
 
-            if epoch % self.training_args.eval_epochs == 0 and self.eval_dataloader is not None:
-                rd_cost = self.evaluate(stage=stage)
-                if rd_cost < self.best_rd_cost_per_stage[stage]:
-                    self.best_rd_cost_per_stage[stage] = min(self.best_rd_cost_per_stage[stage], rd_cost)
+            if self.training_args.disable_eval:  # skip evaluation
+                if epoch % self.training_args.save_epochs == 0:
                     self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
-
-            if self.eval_dataloader is None and epoch % self.training_args.save_epochs == 0:  # skip evaluation
-                self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
+            else:
+                if epoch % self.training_args.eval_epochs == 0:
+                    rd_cost = self.evaluate(stage=stage)
+                    if rd_cost < self.best_rd_cost_per_stage[stage]:
+                        self.best_rd_cost_per_stage[stage] = min(self.best_rd_cost_per_stage[stage], rd_cost)
+                        self.save_checkpoints(epoch=epoch, best_rd_cost=self.best_rd_cost_per_stage[stage], stage=stage)
 
     @torch.no_grad()
     def evaluate(self, stage: Enum) -> float:
@@ -133,11 +134,27 @@ class TrainerABC(metaclass=ABCMeta):
         raise NotImplementedError
 
     def init_dataloader(self) -> tuple:
-        train_dataset = Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_trainlist.txt",
-                                        transform=RandomCrop(size=256))
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.training_args.batch_size, shuffle=True)
-        eval_dataset = Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_testlist.txt")
-        eval_dataloader = DataLoader(dataset=eval_dataset, batch_size=1, shuffle=False)
+        if self.training_args.disable_eval:
+            train_dataloader = DataLoader(dataset=Vimeo90KDatasetDVC(root=self.training_args.dataset_root,
+                                                                     split_filepath=self.training_args.split_filepath,
+                                                                     transform=Compose([
+                                                                       RandomCrop(size=256), RandomHorizontalFlip(p=0.5),
+                                                                       RandomVerticalFlip(p=0.5)
+                                                                     ])),
+                                          batch_size=self.training_args.batch_size, shuffle=True)
+            eval_dataloader = None
+        else:
+            train_dataloader = DataLoader(dataset=Vimeo90KDataset(root=self.training_args.dataset_root,
+                                                                  list_filename="sep_trainlist.txt",
+                                                                  transform=Compose([
+                                                                    RandomCrop(size=256),
+                                                                    RandomHorizontalFlip(p=0.5),
+                                                                    RandomVerticalFlip(p=0.5)
+                                                                  ])),
+                                          batch_size=self.training_args.batch_size, shuffle=True)
+            eval_dataloader = DataLoader(dataset=Vimeo90KDataset(root=self.training_args.dataset_root,
+                                                                 list_filename="sep_testlist.txt"),
+                                         batch_size=1, shuffle=False)
         return train_dataloader, eval_dataloader
 
     def load_checkpoints(self) -> tuple:

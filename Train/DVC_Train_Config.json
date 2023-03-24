@@ -24,6 +24,7 @@
     "save_epochs": 5,
     "save_directory": "/public/xiangrliu3/Experiments/DVC",
     "verbose": true,
+    "disable_eval": true,
     "record_items": [
       "rd_cost",
       "recon_psnr", "recon_psnr_inter", "align_psnr", "pred_psnr",

@@ -5,13 +5,10 @@ from enum import Enum, unique
 import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
-from torch.utils.data.dataloader import DataLoader
+
 from Model.Common.Trainer import TrainerABC
 from Model.Common.Utils import calculate_bpp, cal_psnr, separate_aux_and_normal_params
 from Model.DVC import InterFrameCodecDVC
-from Model.Common.Dataset import Vimeo90KDatasetDVC
-
-from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip, RandomCrop
 
 
 @unique
@@ -124,16 +121,6 @@ class TrainerDVC(TrainerABC):
         }
 
         return schedulers, aux_schedulers
-
-    def init_dataloader(self) -> tuple:
-        train_dataset = Vimeo90KDatasetDVC(root=self.training_args.dataset_root, split_filepath=self.training_args.split_filepath,
-                                           transform=Compose([
-                                               RandomCrop(size=256), RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)
-                                           ]))
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.training_args.batch_size, shuffle=True)
-
-        eval_dataloader = None
-        return train_dataloader, eval_dataloader
 
 
 if __name__ == "__main__":
