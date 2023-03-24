@@ -11,7 +11,7 @@ from Model.Common.Utils import calculate_bpp, cal_psnr, separate_aux_and_normal_
 from Model.DVC import InterFrameCodecDVC
 from Model.Common.Dataset import Vimeo90KDatasetDVC
 
-from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip
+from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip, RandomCrop
 
 
 @unique
@@ -127,7 +127,9 @@ class TrainerDVC(TrainerABC):
 
     def init_dataloader(self) -> tuple:
         train_dataset = Vimeo90KDatasetDVC(root=self.training_args.dataset_root, split_filepath=self.training_args.split_filepath,
-                                           transform=Compose([RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)]))
+                                           transform=Compose([
+                                               RandomCrop(size=256), RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)
+                                           ]))
         train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.training_args.batch_size, shuffle=True)
 
         eval_dataloader = None
