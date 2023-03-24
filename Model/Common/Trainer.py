@@ -19,7 +19,7 @@ class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
     def __init__(self):
         self.network_args, self.training_args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(item_list=self.training_args.record_items)
+        self.record = Record(item_list=self.training_args.record_items) if not self.training_args.disable_eval else None
 
         self.inter_frame_codec = None
         self.intra_frame_codec = IntraFrameCodec(quality=self.training_args.intra_quality, metric="mse", pretrained=True)
