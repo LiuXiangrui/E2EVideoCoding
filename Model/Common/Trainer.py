@@ -19,7 +19,7 @@ class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
     def __init__(self):
         self.network_args, self.training_args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = Record(item_list=self.training_args.record_items) if not self.training_args.disable_eval else None
+        self.record = None if self.training_args.disable_eval else Record(item_list=self.training_args.record_items)
 
         self.inter_frame_codec = None
         self.intra_frame_codec = IntraFrameCodec(quality=self.training_args.intra_quality, metric="mse", pretrained=True)
@@ -135,26 +135,19 @@ class TrainerABC(metaclass=ABCMeta):
 
     def init_dataloader(self) -> tuple:
         if self.training_args.disable_eval:
-            train_dataloader = DataLoader(dataset=Vimeo90KDatasetDVC(root=self.training_args.dataset_root,
-                                                                     split_filepath=self.training_args.split_filepath,
-                                                                     transform=Compose([
-                                                                       RandomCrop(size=256), RandomHorizontalFlip(p=0.5),
-                                                                       RandomVerticalFlip(p=0.5)
-                                                                     ])),
-                                          batch_size=self.training_args.batch_size, shuffle=True)
+            train_dataloader = DataLoader(
+                dataset=Vimeo90KDatasetDVC(root=self.training_args.dataset_root, split_filepath=self.training_args.split_filepath,
+                                           transform=Compose([RandomCrop(size=256),  RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)])),
+                batch_size=self.training_args.batch_size, shuffle=True)
             eval_dataloader = None
         else:
-            train_dataloader = DataLoader(dataset=Vimeo90KDataset(root=self.training_args.dataset_root,
-                                                                  list_filename="sep_trainlist.txt",
-                                                                  transform=Compose([
-                                                                    RandomCrop(size=256),
-                                                                    RandomHorizontalFlip(p=0.5),
-                                                                    RandomVerticalFlip(p=0.5)
-                                                                  ])),
-                                          batch_size=self.training_args.batch_size, shuffle=True)
-            eval_dataloader = DataLoader(dataset=Vimeo90KDataset(root=self.training_args.dataset_root,
-                                                                 list_filename="sep_testlist.txt"),
-                                         batch_size=1, shuffle=False)
+            train_dataloader = DataLoader(
+                dataset=Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_trainlist.txt",
+                                        transform=Compose([RandomCrop(size=256), RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)])),
+                batch_size=self.training_args.batch_size, shuffle=True)
+            eval_dataloader = DataLoader(
+                dataset=Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_testlist.txt"),
+                batch_size=1, shuffle=False)
         return train_dataloader, eval_dataloader
 
     def load_checkpoints(self) -> tuple:

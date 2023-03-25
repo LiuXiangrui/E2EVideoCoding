@@ -1,8 +1,12 @@
+import math
+from typing import Union
+
 import torch
 import torch.nn.functional as F
 from compressai.ans import BufferedRansEncoder, RansDecoder
 from compressai.layers import GDN
 from compressai.models import CompressionModel
+from compressai.entropy_models import GaussianConditional
 from torch import nn as nn
 
 from Model.Common.BasicBlock import SubPixelConv, ResBlock, EncUnit, DecUnit
@@ -49,7 +53,7 @@ class HyperpriorCompression(CompressionModel):
         self.hyper_analysis_transform = None
         self.hyper_synthesis_transform = None
         self.entropy_bottleneck = None
-        self.gaussian_conditional = None
+        self.gaussian_conditional = GaussianConditional(None)
 
     def forward(self, x: torch.Tensor) -> dict:
         y = self.analysis_transform(x)
@@ -248,7 +252,7 @@ class JointAutoregressiveCompression(CompressionModel):
 class AnalysisTransform(nn.Module):
     def __init__(self, in_channels: int, internal_channels: int, out_channels: int, kernel_size: int, stride: int = 2):
         super().__init__()
-        self.transform = nn.Sequential(
+        transform = [
             nn.Conv2d(in_channels=in_channels, out_channels=internal_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2),
             GDN(in_channels=internal_channels),
             nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2),
@@ -256,7 +260,16 @@ class AnalysisTransform(nn.Module):
             nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2),
             GDN(in_channels=internal_channels),
             nn.Conv2d(in_channels=internal_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2)
-        )
+        ]
+
+        for i, module in enumerate(transform):
+            if not isinstance(module, nn.Conv2d):
+                continue
+            out_channels, in_channels, _, _ = module.weight.data.shape
+            torch.nn.init.xavier_normal_(module.weight.data, gain=math.sqrt((out_channels + in_channels) / in_channels))
+            torch.nn.init.constant_(module.bias.data, val=0.01)
+
+        self.transform = nn.Sequential(*transform)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.transform(x)
@@ -265,7 +278,7 @@ class AnalysisTransform(nn.Module):
 class SynthesisTransform(nn.Module):
     def __init__(self, in_channels: int, internal_channels: int, out_channels: int, kernel_size: int, stride: int = 2):
         super().__init__()
-        self.transform = nn.Sequential(
+        transform = [
             nn.ConvTranspose2d(in_channels=in_channels, out_channels=internal_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2, output_padding=stride - 1),
             GDN(in_channels=internal_channels, inverse=True),
             nn.ConvTranspose2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2, output_padding=stride - 1),
@@ -273,7 +286,16 @@ class SynthesisTransform(nn.Module):
             nn.ConvTranspose2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2, output_padding=stride - 1),
             GDN(in_channels=internal_channels, inverse=True),
             nn.ConvTranspose2d(in_channels=internal_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=kernel_size // 2, output_padding=stride - 1),
-        )
+        ]
+
+        for i, module in enumerate(transform):
+            if not isinstance(module, nn.Conv2d):
+                continue
+            out_channels, in_channels, _, _ = module.weight.data.shape
+            torch.nn.init.xavier_normal_(module.weight.data, gain=math.sqrt((out_channels + in_channels) / in_channels))
+            torch.nn.init.constant_(module.bias.data, val=0.01)
+
+        self.transform = nn.Sequential(*transform)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.transform(x)
@@ -326,35 +348,58 @@ class ContextualSynthesisTransform(nn.Module):
 
 
 class HyperAnalysisTransform(nn.Module):
-    def __init__(self, in_channels: int, internal_channels: int, out_channels: int):
+    def __init__(self, activation: Union[nn.ReLU, nn.LeakyReLU], **kwargs):
         super().__init__()
-        self.transform = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=internal_channels, kernel_size=3, stride=1, padding=1),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=5, stride=2, padding=2),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=internal_channels, out_channels=out_channels, kernel_size=5, stride=2, padding=2)
-        )
+        if "channels" in kwargs:
+            channels = kwargs["channels"]
+        else:
+            channels = [kwargs["in_channels"], kwargs["internal_channels"], kwargs["internal_channels"], kwargs["out_channels"]]
+
+        transform = [
+            nn.Conv2d(in_channels=channels[0], out_channels=channels[1], kernel_size=3, stride=1, padding=1),
+            activation(inplace=True),
+            nn.Conv2d(in_channels=channels[1], out_channels=channels[2], kernel_size=5, stride=2, padding=2),
+            activation(inplace=True),
+            nn.Conv2d(in_channels=channels[2], out_channels=channels[3],kernel_size=5, stride=2, padding=2)
+        ]
+
+        for i, module in enumerate(transform):
+            if not isinstance(module, nn.Conv2d):
+                continue
+            out_channels, in_channels, _, _ = module.weight.data.shape
+            torch.nn.init.xavier_normal_(module.weight.data, gain=math.sqrt((out_channels + in_channels) / in_channels))
+            torch.nn.init.constant_(module.bias.data, val=0.01)
+
+        self.transform = nn.Sequential(*transform)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.transform(x)
 
 
 class HyperSynthesisTransform(nn.Module):
-    def __init__(self, **kwargs):
+    def __init__(self, activation: Union[nn.ReLU, nn.LeakyReLU], **kwargs):
         if "channels" in kwargs:
             channels = kwargs["channels"]
         else:
             channels = [kwargs["in_channels"], kwargs["internal_channels"], kwargs["internal_channels"], kwargs["out_channels"]]
 
         super().__init__()
-        self.transform = nn.Sequential(
+        transform = [
             nn.ConvTranspose2d(in_channels=channels[0], out_channels=channels[1], kernel_size=5, stride=2, padding=2, output_padding=1),
-            nn.LeakyReLU(inplace=True),
+            activation(inplace=True),
             nn.ConvTranspose2d(in_channels=channels[1], out_channels=channels[2], kernel_size=5, stride=2, padding=2, output_padding=1),
-            nn.LeakyReLU(inplace=True),
+            activation(inplace=True),
             nn.Conv2d(in_channels=channels[2], out_channels=channels[3], kernel_size=3, stride=1, padding=1),
-        )
+        ]
+
+        for i, module in enumerate(transform):
+            if not isinstance(module, nn.ConvTranspose2d):
+                continue
+            out_channels, in_channels, _, _ = module.weight.data.shape
+            torch.nn.init.xavier_normal_(module.weight.data, gain=math.sqrt((out_channels + in_channels) / in_channels))
+            torch.nn.init.constant_(module.bias.data, val=0.01)
+
+        self.transform = nn.Sequential(*transform)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.transform(x)

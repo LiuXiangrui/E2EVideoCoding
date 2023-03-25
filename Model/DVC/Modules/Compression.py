@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
-from Model.Common.Compression import AnalysisTransform, SynthesisTransform
+from Model.Common.Compression import AnalysisTransform, SynthesisTransform, HyperSynthesisTransform, HyperAnalysisTransform
 from Model.Common.Compression import FactorizedCompression, HyperpriorCompression
 
 
@@ -30,13 +30,12 @@ class AnalysisTransformMotionCompression(nn.Module):
         ]
 
         # initialize
-        torch.nn.init.xavier_normal_(transform[0].weight.data, gain=math.sqrt(2 * (3 + internal_channels) / 6))
-        torch.nn.init.constant_(transform[0].bias.data, val=0.01)
-        for i in range(1, len(transform) // 2 - 1):
-            torch.nn.init.xavier_normal_(transform[2 * i].weight.data, gain=math.sqrt(2))
-            torch.nn.init.constant_(transform[2 * i].bias.data, val=0.01)
-        torch.nn.init.xavier_normal_(transform[-1].weight.data, gain=math.sqrt((out_channels + internal_channels) / internal_channels))
-        torch.nn.init.constant_(transform[-1].bias.data, val=0.01)
+        for i, module in enumerate(transform):
+            if not isinstance(module, nn.Conv2d):
+                continue
+            out_channels, in_channels, _, _ = module.weight.data.shape
+            torch.nn.init.xavier_normal_(module.weight.data, gain=math.sqrt((out_channels + in_channels) / in_channels))
+            torch.nn.init.constant_(module.bias.data, val=0.01)
 
         self.transform = nn.Sequential(*transform)
 
@@ -66,13 +65,12 @@ class SynthesisTransformMotionCompression(nn.Module):
         ]
 
         # initialize
-        torch.nn.init.xavier_normal_(transform[0].weight.data, gain=math.sqrt(2))
-        torch.nn.init.constant_(transform[0].bias.data, val=0.01)
-        for i in range(1, len(transform) // 2 - 1):
-            torch.nn.init.xavier_normal_(transform[2 * i].weight.data, gain=math.sqrt(2))
-            torch.nn.init.constant_(transform[2 * i].bias.data, val=0.01)
-        torch.nn.init.xavier_normal_(transform[-1].weight.data, gain=math.sqrt((out_channels + 2) / out_channels))
-        torch.nn.init.constant_(transform[-1].bias.data, val=0.01)
+        for i, module in enumerate(transform):
+            if not isinstance(module, (nn.Conv2d, nn.ConvTranspose2d)):
+                continue
+            out_channels, in_channels, _, _ = module.weight.data.shape
+            torch.nn.init.xavier_normal_(module.weight.data, gain=math.sqrt((out_channels + in_channels) / in_channels))
+            torch.nn.init.constant_(module.bias.data, val=0.01)
 
         self.transform = nn.Sequential(*transform)
 
@@ -81,46 +79,11 @@ class SynthesisTransformMotionCompression(nn.Module):
 
 
 class MotionCompression(FactorizedCompression):
-    def __init__(self, N: int = 128, M: int = 128):
+    def __init__(self, N: int, M: int):
         super().__init__()
         self.analysis_transform = AnalysisTransformMotionCompression(in_channels=2, internal_channels=N, out_channels=M)
         self.synthesis_transform = SynthesisTransformMotionCompression(in_channels=M, internal_channels=N, out_channels=2)
         self.entropy_bottleneck = EntropyBottleneck(channels=M)
-
-
-class HyperAnalysisTransformResiduesCompression(nn.Module):
-    def __init__(self, in_channels: int, internal_channels: int, out_channels: int):
-        super().__init__()
-        self.transform = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=internal_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=5, stride=2, padding=2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=internal_channels, out_channels=out_channels, kernel_size=5, stride=2, padding=2)
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.transform(x)
-
-
-class HyperSynthesisTransformResiduesCompression(nn.Module):
-    def __init__(self, **kwargs):
-        if "channels" in kwargs:
-            channels = kwargs["channels"]
-        else:
-            channels = [kwargs["in_channels"], kwargs["internal_channels"], kwargs["internal_channels"], kwargs["out_channels"]]
-
-        super().__init__()
-        self.transform = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=channels[0], out_channels=channels[1], kernel_size=5, stride=2, padding=2, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(in_channels=channels[1], out_channels=channels[2], kernel_size=5, stride=2, padding=2, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=channels[2], out_channels=channels[3], kernel_size=3, stride=1, padding=1),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.transform(x)
 
 
 class ResiduesCompression(HyperpriorCompression):
@@ -128,7 +91,6 @@ class ResiduesCompression(HyperpriorCompression):
         super().__init__()
         self.analysis_transform = AnalysisTransform(in_channels=3, internal_channels=N, out_channels=M, kernel_size=5)
         self.synthesis_transform = SynthesisTransform(in_channels=M, internal_channels=N, out_channels=3, kernel_size=5)
-        self.hyper_analysis_transform = HyperAnalysisTransformResiduesCompression(in_channels=M, internal_channels=N, out_channels=N)
-        self.hyper_synthesis_transform = HyperSynthesisTransformResiduesCompression(in_channels=N, internal_channels=N, out_channels=M)
+        self.hyper_analysis_transform = HyperAnalysisTransform(activation=nn.ReLU, in_channels=M, internal_channels=N, out_channels=N)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(activation=nn.ReLU, in_channels=N, internal_channels=N, out_channels=M)
         self.entropy_bottleneck = EntropyBottleneck(channels=N)
-        self.gaussian_conditional = GaussianConditional(None)

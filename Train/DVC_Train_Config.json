@@ -15,18 +15,15 @@
     "batch_size": 4,
     "intra_quality": 5,
     "dataset_root": "/public/xiangrliu3/Vimeo_Septuplet/sequences",
-    "epoch_milestone": [7, 50],
+    "split_filepath": "C:\\Users\\xiangrliu3\\Desktop\\E2EVideoCoding\\Train\\train_split_vimeo90K.txt",
+    "epoch_milestone": [7, 25],
     "lr_milestone": [1e-4],
-    "lr_decay_milestone": [23],
+    "lr_decay_milestone": [22],
     "lr_decay_factor": 0.1,
     "grad_clip": 0.5,
     "save_epochs": 1,
     "save_directory": "/public/xiangrliu3/Experiments/DVC",
     "verbose": true,
-    "disable_eval": true,
-    "record_items": [
-      "rd_cost",
-      "recon_psnr", "recon_psnr_inter", "align_psnr", "pred_psnr",
-      "motion_bpp", "frame_bpp", "total_bpp", "total_bpp_inter"]
+    "disable_eval": true
   }
 }
