@@ -139,13 +139,13 @@ class TrainerABC(metaclass=ABCMeta):
             train_dataloader = DataLoader(
                 dataset=Vimeo90KDatasetDVC(root=self.training_args.dataset_root, split_filepath=self.training_args.split_filepath,
                                            transform=Compose([RandomCrop(size=256),  RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)])),
-                batch_size=self.training_args.batch_size, shuffle=True)
+                batch_size=self.training_args.batch_size, shuffle=True, pin_memory=True, num_workers=4)
             eval_dataloader = None
         else:
             train_dataloader = DataLoader(
                 dataset=Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_trainlist.txt",
                                         transform=Compose([RandomCrop(size=256), RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)])),
-                batch_size=self.training_args.batch_size, shuffle=True)
+                batch_size=self.training_args.batch_size, shuffle=True, pin_memory=True, num_workers=4)
             eval_dataloader = DataLoader(
                 dataset=Vimeo90KDataset(root=self.training_args.dataset_root, list_filename="sep_testlist.txt"),
                 batch_size=1, shuffle=False)
