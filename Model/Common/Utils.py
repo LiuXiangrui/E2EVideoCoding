@@ -7,6 +7,7 @@ import logging
 import math
 from pathlib import Path
 import sys
+from typing import Union
 
 import torch
 from prettytable import PrettyTable
@@ -149,7 +150,7 @@ class DecodedFrameBuffer:
         return len(self.frame_buffer)
 
 
-def calculate_bpp(likelihoods: torch.Tensor | dict, num_pixels: int) -> torch.Tensor:
+def calculate_bpp(likelihoods: Union[torch.Tensor, dict], num_pixels: int) -> torch.Tensor:
     if isinstance(likelihoods, torch.Tensor):
         return torch.log(likelihoods).sum() / (-math.log(2) * num_pixels)
     elif isinstance(likelihoods, dict):
