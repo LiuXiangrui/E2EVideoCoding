@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
@@ -9,7 +11,7 @@ from Model.Common.Compression import FactorizedCompression, HyperpriorCompressio
 class AnalysisTransformMotionCompression(nn.Module):
     def __init__(self, in_channels: int, internal_channels: int, out_channels: int):
         super().__init__()
-        self.transform = nn.Sequential(
+        transform = [
             nn.Conv2d(in_channels=in_channels, out_channels=internal_channels, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(inplace=True, negative_slope=0.1),
             nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=3, stride=1, padding=1),
@@ -25,7 +27,18 @@ class AnalysisTransformMotionCompression(nn.Module):
             nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(inplace=True, negative_slope=0.1),
             nn.Conv2d(in_channels=internal_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1)
-        )
+        ]
+
+        # initialize
+        torch.nn.init.xavier_normal_(transform[0].weight.data, gain=math.sqrt(2 * (3 + internal_channels) / 6))
+        torch.nn.init.constant_(transform[0].bias.data, val=0.01)
+        for i in range(1, len(transform) // 2 - 1):
+            torch.nn.init.xavier_normal_(transform[2 * i].weight.data, gain=math.sqrt(2))
+            torch.nn.init.constant_(transform[2 * i].bias.data, val=0.01)
+        torch.nn.init.xavier_normal_(transform[-1].weight.data, gain=math.sqrt((out_channels + internal_channels) / internal_channels))
+        torch.nn.init.constant_(transform[-1].bias.data, val=0.01)
+
+        self.transform = nn.Sequential(*transform)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.transform(x)
@@ -34,7 +47,7 @@ class AnalysisTransformMotionCompression(nn.Module):
 class SynthesisTransformMotionCompression(nn.Module):
     def __init__(self, in_channels: int, internal_channels: int, out_channels: int):
         super().__init__()
-        self.transform = nn.Sequential(
+        transform = [
             nn.ConvTranspose2d(in_channels=in_channels, out_channels=internal_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(inplace=True, negative_slope=0.1),
             nn.Conv2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=3, stride=1, padding=1),
@@ -50,7 +63,18 @@ class SynthesisTransformMotionCompression(nn.Module):
             nn.ConvTranspose2d(in_channels=internal_channels, out_channels=internal_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(inplace=True, negative_slope=0.1),
             nn.Conv2d(in_channels=internal_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1)
-        )
+        ]
+
+        # initialize
+        torch.nn.init.xavier_normal_(transform[0].weight.data, gain=math.sqrt(2))
+        torch.nn.init.constant_(transform[0].bias.data, val=0.01)
+        for i in range(1, len(transform) // 2 - 1):
+            torch.nn.init.xavier_normal_(transform[2 * i].weight.data, gain=math.sqrt(2))
+            torch.nn.init.constant_(transform[2 * i].bias.data, val=0.01)
+        torch.nn.init.xavier_normal_(transform[-1].weight.data, gain=math.sqrt((out_channels + 2) / out_channels))
+        torch.nn.init.constant_(transform[-1].bias.data, val=0.01)
+
+        self.transform = nn.Sequential(*transform)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.transform(x)
