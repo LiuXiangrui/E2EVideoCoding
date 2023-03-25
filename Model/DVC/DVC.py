@@ -29,6 +29,7 @@ class InterFrameCodecDVC(nn.Module):
         residues_likelihoods = enc_results["likelihoods"]
 
         frame_hat = pred + residues_hat
+        frame_hat = torch.clamp(frame_hat, min=0., max=1.)
 
         return frame_hat, aligned_ref, pred, motion_likelihoods, residues_likelihoods
 

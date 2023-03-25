@@ -11,14 +11,14 @@ class PredRefine(nn.Module):
     def __init__(self):
         super().__init__()
         self.scale_levels = 3
-        self.head = nn.Conv2d(in_channels=8, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.in_channels = 6  # channels of current frame added with channels of reference frame
+        self.head = nn.Sequential(
+            nn.Conv2d(in_channels=6, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True)
+        )
         self.res_blocks = nn.ModuleList([ResBlock(channels=64, activation=nn.ReLU, head_act=True) for _ in
                                          range(2 * self.scale_levels)])
-        self.tail = nn.Sequential(
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=64, out_channels=3, kernel_size=3, stride=1, padding=1)
-        )
+        self.tail = nn.Conv2d(in_channels=64, out_channels=3, kernel_size=3, stride=1, padding=1)
 
     def forward(self, aligned_ref: torch.Tensor, ref: torch.Tensor, motion_fields: torch.Tensor) -> torch.Tensor:
         feats = self.head(torch.cat([motion_fields, ref, aligned_ref], dim=1))
@@ -43,7 +43,7 @@ class MotionCompensation(nn.Module):
         super(MotionCompensation, self).__init__()
         self.pred_refine = PredRefine()
 
-    def forward(self, ref: torch.Tensor, motion_fields: torch.Tensor) -> torch.Tensor:
+    def forward(self, ref: torch.Tensor, motion_fields: torch.Tensor) -> tuple:
         aligned_ref = optical_flow_warp(ref, motion_fields=motion_fields)
         pred = self.pred_refine(aligned_ref, ref=ref, motion_fields=motion_fields)
         return aligned_ref, pred

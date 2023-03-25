@@ -1,5 +1,6 @@
 import torch
 from torch import nn as nn
+from typing import Union
 
 
 class SubPixelConv(nn.Module):
@@ -16,12 +17,11 @@ class SubPixelConv(nn.Module):
 
 
 class ResBlock(nn.Module):
-    def __init__(self, channels: int, activation: nn.Module, head_act: bool = False, tail_act: bool = False, **kwargs):
+    def __init__(self, channels: int, activation: Union[nn.ReLU, nn.LeakyReLU], head_act: bool = False, tail_act: bool = False, **kwargs):
         super().__init__()
-        kwargs["inplace"] = True
         self.net = [
             nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, stride=1, padding=1),
-            activation(**kwargs),
+            activation(inplace=True),
             nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, stride=1, padding=1),
         ]
 
