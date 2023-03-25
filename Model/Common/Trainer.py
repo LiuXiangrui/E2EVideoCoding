@@ -91,7 +91,8 @@ class TrainerABC(metaclass=ABCMeta):
             self.optimize(enc_results, stage=stage)
 
             self.train_steps += 1
-            self.visualize(enc_results, stage=stage)
+            if self.training_args.verbose:
+                self.visualize(enc_results, stage=stage)
 
         self.lr_decay(stage=stage)
 

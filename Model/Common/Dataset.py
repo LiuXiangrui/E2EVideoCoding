@@ -56,7 +56,7 @@ class Vimeo90KDatasetDVC(Dataset):
 
     def __getitem__(self, index: int) -> torch.Tensor:
         frames = torch.stack([self.to_tensor(Image.open(self.frames_list[index]).convert("RGB")),
-                              self.to_tensor(Image.open(self.references_list[index]).convert("RGB"))], dim=1)
+                              self.to_tensor(Image.open(self.references_list[index]).convert("RGB"))], dim=0)
         if self.transform:
             return self.transform(frames)
         return frames

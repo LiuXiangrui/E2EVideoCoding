@@ -43,7 +43,7 @@ class SpyNetOpticalFlowEst(nn.Module):
         optical_flow = torch.zeros(size=[batch, 2, shape_last_scale[2] // 2, shape_last_scale[3] // 2],
                                    dtype=cur_frame.dtype, device=cur_frame.device)
         for level in range(self.scale_levels, 0, -1):
-            upsampled_optical_flow = F.interpolate(optical_flow, scale_factor=(2, 2), mode="bilinear") * 2.0
+            upsampled_optical_flow = F.interpolate(optical_flow, scale_factor=(2, 2), mode="bilinear", align_corners=False) * 2.0
             optical_flow = upsampled_optical_flow + self.net[self.scale_levels - level](torch.cat([
                 multiscale_cur_frame[level - 1],
                 optical_flow_warp(multiscale_ref_frame[level - 1], upsampled_optical_flow),
