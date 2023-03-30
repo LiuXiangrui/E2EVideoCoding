@@ -1,0 +1,54 @@
+{
+    "base_path": "/media/xrliu/Data/VideoDataset/UVG",
+    "sequences": {
+        "Beauty_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "Bosphorus_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "HoneyBee_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "Jockey_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "ReadySteadyGo_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "ShakeNDry_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 300,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        },
+        "YachtRide_1920x1080_120fps_420_8bit_YUV": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 128,
+            "SourceWidth": 1920,
+            "SourceHeight": 1080,
+            "Level": 4.1
+        }
+    }
+}

@@ -1,0 +1,26 @@
+{
+    "base_path": "/media/xrliu/Data/VideoDataset/HEVC_CTC/Class_E",
+    "sequences": {
+        "FourPeople_1280x720_60": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 60,
+            "SourceWidth": 1280,
+            "SourceHeight": 720,
+            "Level": 4
+        },
+        "Johnny_1280x720_60": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 60,
+            "SourceWidth": 1280,
+            "SourceHeight": 720,
+            "Level": 4
+        },
+        "KristenAndSara_1280x720_60": {
+            "FramesToBeEncoded": 600,
+            "FrameRate": 60,
+            "SourceWidth": 1280,
+            "SourceHeight": 720,
+            "Level": 4
+        }
+    }
+}

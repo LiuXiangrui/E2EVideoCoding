@@ -1,5 +1,5 @@
 {
-    "base_path": "/media/xrliu/Data/VideoDataset/HEVC_CTC/Class_D",
+    "base_path": "/media/xrliu/Data/VideoDataset/HEVC_CTC/Class_B",
     "sequences": {
         "BasketballPass_416x240_50": {
             "FramesToBeEncoded": 500,
