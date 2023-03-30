@@ -16,8 +16,6 @@ class TrainerABC(metaclass=ABCMeta):
     @abstractmethod
     def __init__(self):
         self.network_args, self.training_args, self.logger, self.checkpoints_dir, self.tensorboard = init()
-        self.record = None if self.training_args.disable_eval else Record(item_list=self.training_args.record_items)
-
         self.inter_frame_codec = None
         self.intra_frame_codec = IntraFrameCodec(quality=self.training_args.intra_quality, metric="mse", pretrained=True)
 
@@ -32,8 +30,6 @@ class TrainerABC(metaclass=ABCMeta):
             self.distortion_metric = None
 
         self.train_steps = self.eval_epoch = 0
-
-        self.best_rd_cost_per_stage = None
 
     def train(self) -> None:
         self.intra_frame_codec.to("cuda" if self.training_args.gpu else "cpu")

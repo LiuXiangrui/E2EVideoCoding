@@ -27,8 +27,6 @@ class TrainerDVC(TrainerABC):
         super().__init__()
         self.inter_frame_codec = InterFrameCodecDVC(network_config=self.network_args.serialize())
 
-        self.best_rd_cost_per_stage = {TrainingStage(i): 1e9 for i in range(len(TrainingStage))}
-
     def encode_sequence(self, frames: torch.Tensor, stage: TrainingStage) -> dict:
         assert stage != TrainingStage.NOT_AVAILABLE
 
