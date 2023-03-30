@@ -16,7 +16,7 @@
     "intra_quality": 5,
     "dataset_root": "/public/xiangrliu3/Vimeo_Septuplet/sequences",
     "split_filepath": "C:\\Users\\xiangrliu3\\Desktop\\E2EVideoCoding\\Train\\train_split_vimeo90K.txt",
-    "epoch_milestone": [7, 25],
+    "epoch_milestone": [7, 25, 5],
     "lr_milestone": [1e-4],
     "lr_decay_milestone": [22],
     "lr_decay_factor": 0.1,
@@ -24,6 +24,6 @@
     "save_epochs": 1,
     "save_directory": "/public/xiangrliu3/Experiments/DVC",
     "verbose": true,
-    "disable_eval": true
+    "num_workers": 16
   }
 }
