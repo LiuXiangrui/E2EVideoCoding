@@ -33,7 +33,7 @@ class Vimeo90KDataset(Dataset):  # modified based on PytorchCompression
         return len(self.frames_list)
 
     def __getitem__(self, index: int) -> torch.Tensor:
-        frames = torch.stack([self.to_tensor(Image.open(frame_path).convert("RGB")) for frame_path in self.frames_list[index]], dim=1)
+        frames = torch.stack([self.to_tensor(Image.open(frame_path).convert("RGB")) for frame_path in self.frames_list[index]], dim=0)
 
         if self.transform:
             return self.transform(frames)
