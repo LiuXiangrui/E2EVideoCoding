@@ -42,10 +42,10 @@ header_info_bit_depth_map = {
 
 quality_idx_to_network_cfg_map = {
     "DVC": {
+        1: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
+        2: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
         3: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
-        3: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
-        3: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
-        3: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
+        4: {"N_motion": 128, "M_motion": 128, "N_residues": 64, "M_residues": 96},
     },
     "DCVC": {
         1: {"N_motion": 64, "M_motion": 128, "N_frame": 64, "M_frame": 96},
