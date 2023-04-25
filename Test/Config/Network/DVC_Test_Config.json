@@ -13,7 +13,7 @@
     "use_gpu": true,
     "seq_cfg_folder": "/home/xrliu/Desktop/E2EVideoCoding/Test/Config/Sequences",
     "gop_size": 32,
-    "quality_idx": 3,
+    "quality_idx": 4,
     "compress_folder": "/home/xrliu/Desktop/DVCModels",
     "results_folder": "/home/xrliu/Desktop/DVCModels",
     "decode_buffer_capacity": 1
