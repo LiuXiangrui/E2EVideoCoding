@@ -35,11 +35,10 @@ class TrainerFVC(TrainerABC):
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
-        intra_frame = frames[:, 0, :, :, :].to("cuda" if self.training_args.gpu else "cpu")
+        intra_frame = frames[0].to("cuda" if self.training_args.gpu else "cpu")
         with torch.no_grad():
             enc_results = self.intra_frame_codec(intra_frame)
         intra_frame_hat = torch.clamp(enc_results["x_hat"], min=0.0, max=1.0)
-
         decode_frame_buffer.update(intra_frame_hat)
 
         rd_cost_avg = aux_loss_avg = recon_psnr_avg = motion_bpp_avg = frame_bpp_avg = 0.
