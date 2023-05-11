@@ -32,7 +32,7 @@ class TrainerFVC(TrainerABC):
         decode_frame_buffer = DecodedFrameBuffer(capacity=self.training_args.decode_buffer_capacity)
 
         num_available_frames = 7 if stage == TrainingStage.ROLLING else 2
-        frames = frames[:, :num_available_frames, :, :, :]
+        frames = [frames[:, i, :, :, :] for i in range(num_available_frames)]
 
         # I frame coding
         intra_frame = frames[0].to("cuda" if self.training_args.gpu else "cpu")
