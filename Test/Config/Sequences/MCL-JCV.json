@@ -1,5 +1,5 @@
 {
-    "base_path": "/media/xrliu/Data/VideoDataset//MCL-JCV",
+    "base_path": "D://VideoDataset//MCL-JCV",
     "sequences": {
         "videoSRC01_1920x1080_30": {
             "FramesToBeEncoded": 150,

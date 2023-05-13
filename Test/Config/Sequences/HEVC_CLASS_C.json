@@ -1,5 +1,5 @@
 {
-    "base_path": "/media/xrliu/Data/VideoDataset/HEVC_CTC/Class_C",
+    "base_path": "D://VideoDataset//HEVC_CTC//Class_C",
     "sequences": {
         "BQMall_832x480_60": {
             "FramesToBeEncoded": 600,

@@ -1,5 +1,5 @@
 {
-    "base_path": "/media/xrliu/Data/VideoDataset/UVG",
+    "base_path": "D://VideoDataset//UVG",
     "sequences": {
         "Beauty_1920x1080_120fps_420_8bit_YUV": {
             "FramesToBeEncoded": 600,

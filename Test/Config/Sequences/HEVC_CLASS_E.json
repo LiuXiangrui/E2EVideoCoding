@@ -1,5 +1,5 @@
 {
-    "base_path": "/media/xrliu/Data/VideoDataset/HEVC_CTC/Class_E",
+    "base_path": "D://VideoDataset//HEVC_CTC//Class_E",
     "sequences": {
         "FourPeople_1280x720_60": {
             "FramesToBeEncoded": 600,
