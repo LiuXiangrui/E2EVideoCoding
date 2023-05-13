@@ -1,3 +1,4 @@
+import torch.nn as nn
 from compressai.entropy_models import GaussianConditional, EntropyBottleneck
 
 from Model.Common.Compression import HyperpriorCompression
@@ -10,8 +11,8 @@ class MotionCompression(HyperpriorCompression):
         super().__init__()
         self.analysis_transform = AnalysisTransformWithResBlocks(in_channels=in_channels, internal_channels=N, out_channels=M)
         self.synthesis_transform = SynthesisTransformWithResBlocks(in_channels=M, internal_channels=N, out_channels=out_channels)
-        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N)
-        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M)
+        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N, activation=nn.LeakyReLU)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M, activation=nn.LeakyReLU)
         self.entropy_bottleneck = EntropyBottleneck(channels=N)
         self.gaussian_conditional = GaussianConditional(None)
 
@@ -21,7 +22,7 @@ class ResiduesCompression(HyperpriorCompression):
         super().__init__()
         self.analysis_transform = AnalysisTransformWithResBlocks(in_channels=in_channels, internal_channels=N, out_channels=M)
         self.synthesis_transform = SynthesisTransformWithResBlocks(in_channels=M, internal_channels=N, out_channels=in_channels)
-        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N)
-        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M)
+        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N, activation=nn.LeakyReLU)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M, activation=nn.LeakyReLU)
         self.entropy_bottleneck = EntropyBottleneck(channels=N)
         self.gaussian_conditional = GaussianConditional(None)
