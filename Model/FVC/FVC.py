@@ -34,7 +34,7 @@ class InterFrameCodecFVC(nn.Module):
 
         frame_hat = self.frame_reconstruction(feats_hat)
 
-        return frame_hat, residues_likelihoods, motion_likelihoods
+        return frame_hat, motion_likelihoods, residues_likelihoods
 
     def aux_loss(self) -> torch.Tensor:
         return self.motion_compression.aux_loss() + self.residues_compression.aux_loss()
