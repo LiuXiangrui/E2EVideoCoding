@@ -86,3 +86,15 @@ class DepthConvBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)
+
+
+class SubPixelConv(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int, upscale_factor: int = 2):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels=in_ch, out_channels=out_ch * upscale_factor ** 2, kernel_size=3, stride=1, padding=1),
+            nn.PixelShuffle(upscale_factor=upscale_factor)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)

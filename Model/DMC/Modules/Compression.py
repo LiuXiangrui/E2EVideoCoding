@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .BasicBlock import ResidualBlockWithStride, ResidualBlockUpsample, DepthConvBlock
+from .BasicBlock import ResidualBlockWithStride, ResidualBlockUpsample, DepthConvBlock, SubPixelConv
 
 
 class MotionAnalysisTransform(nn.Module):
@@ -45,8 +45,7 @@ class MotionSynthesisTransform(nn.Module):
         self.dec_2 = ResidualBlockUpsample(in_ch=in_ch, out_ch=in_ch)
         self.dec_3 = nn.Sequential(
             DepthConvBlock(in_ch=in_ch, out_ch=in_ch),
-            nn.Conv2d(in_channels=in_ch, out_channels=out_ch * 4, kernel_size=1),
-            nn.PixelShuffle(upscale_factor=2)
+            SubPixelConv(in_ch=in_ch, out_ch=out_ch)
         )
 
     def forward(self, x: torch.Tensor, quant_step: torch.Tensor) -> tuple:
@@ -81,13 +80,11 @@ class MotionHyperDecoder(nn.Module):
         self.body = nn.Sequential(
             nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=out_ch, out_channels=out_ch * 4, kernel_size=1),
-            nn.PixelShuffle(upscale_factor=2),
+            SubPixelConv(in_ch=out_ch, out_ch=out_ch),
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=out_ch, out_channels=out_ch * 4, kernel_size=1),
-            nn.PixelShuffle(upscale_factor=2),
+            SubPixelConv(in_ch=out_ch, out_ch=out_ch),
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, stride=1, padding=1)
         )
