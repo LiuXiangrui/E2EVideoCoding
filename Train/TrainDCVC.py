@@ -114,14 +114,6 @@ class TrainerDCVC(TrainerABC):
                                                       "Alignment": enc_results["align_psnr"]})
         self.tensorboard.add_scalars(main_tag="Training/Bpp", global_step=self.train_steps,
                                      tag_scalar_dict={"Motion Info": enc_results["motion_bpp"], "Frame": enc_results["frame_bpp"]})
-        if self.train_steps % self.training_args.imgs_visualization_interval == 0:
-            for i in range(len(enc_results["pristine"])):
-                self.tensorboard.add_images(tag="Training/Reconstruction_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
-                                            img_tensor=enc_results["reconstruction"][i].clone().detach().cpu())
-                self.tensorboard.add_images(tag="Training/Pristine_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
-                                            img_tensor=enc_results["pristine"][i].clone().detach().cpu())
-                self.tensorboard.add_images(tag="Training/Alignment_Frame_{}".format(str(i + 1)), global_step=self.train_steps,
-                                            img_tensor=enc_results["alignment"][i].clone().detach().cpu())
 
     def lr_decay(self, stage: TrainingStage) -> None:
         pass
