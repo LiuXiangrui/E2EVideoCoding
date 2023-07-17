@@ -2,7 +2,6 @@ from enum import Enum, unique
 
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.data.dataloader import DataLoader
 from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip, RandomCrop
 
