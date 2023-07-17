@@ -18,8 +18,8 @@ class MotionCompression(JointAutoregressiveCompression):
         super().__init__()
         self.analysis_transform = AnalysisTransform(in_channels=2, internal_channels=M, out_channels=M, kernel_size=3)
         self.synthesis_transform = SynthesisTransform(in_channels=M, internal_channels=M, out_channels=2, kernel_size=3)
-        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N)
-        self.hyper_synthesis_transform = HyperSynthesisTransform(channels=[N, N, N * 3 // 2, M * 2])
+        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N, activation=nn.LeakyReLU)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(channels=[N, N, N * 3 // 2, M * 2], activation=nn.LeakyReLU)
         self.entropy_parameters = nn.Sequential(
             nn.Conv2d(in_channels=M * 12 // 3, out_channels=M * 10 // 3, kernel_size=1),
             nn.LeakyReLU(inplace=True),
@@ -39,8 +39,8 @@ class ContextualCompression(JointAutoregressiveCompression):
         super().__init__()
         self.analysis_transform = ContextualAnalysisTransform(in_channels=3, ctx_channels=N, internal_channels=N, out_channels=M, kernel_size=5)
         self.synthesis_transform = ContextualSynthesisTransform(in_channels=M, ctx_channels=N, internal_channels=N, out_channels=3, kernel_size=5)
-        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N)
-        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M)
+        self.hyper_analysis_transform = HyperAnalysisTransform(in_channels=M, internal_channels=N, out_channels=N, activation=nn.LeakyReLU)
+        self.hyper_synthesis_transform = HyperSynthesisTransform(in_channels=N, internal_channels=N, out_channels=M, activation=nn.LeakyReLU)
         self.entropy_parameters = nn.Sequential(
             nn.Conv2d(in_channels=M * 12 // 3, out_channels=M * 10 // 3, kernel_size=1),
             nn.LeakyReLU(inplace=True),
