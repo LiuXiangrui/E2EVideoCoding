@@ -124,8 +124,7 @@ class TrainerDCVC(TrainerABC):
                                             img_tensor=enc_results["alignment"][i].clone().detach().cpu())
 
     def lr_decay(self, stage: TrainingStage) -> None:
-        self.schedulers[stage].step()
-        self.aux_schedulers[stage].step()
+        pass
 
     def infer_stage(self, epoch: int) -> TrainingStage:
         epoch_milestone = self.training_args.epoch_milestone
@@ -162,24 +161,18 @@ class TrainerDCVC(TrainerABC):
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
-        lr_decay_milestone = self.training_args.lr_decay_milestone if isinstance(self.training_args.lr_decay_milestone, list) else [self.training_args.lr_decay_milestone, ]
-
-        scheduler = MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
-                                milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
-        aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_INTER_LOSS],
-                                    last_epoch=start_epoch - 1,
-                                    milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
-
         schedulers = {
-            TrainingStage.WITH_INTER_LOSS: scheduler,
-            TrainingStage.ONLY_RD_LOSS: scheduler,
-            TrainingStage.ROLLING: scheduler
+            TrainingStage.ME: None,
+            TrainingStage.RECONSTRUCTION: None,
+            TrainingStage.CONTEXTUAL_CODING: None,
+            TrainingStage.ROLLING: None,
         }
 
         aux_schedulers = {
-            TrainingStage.WITH_INTER_LOSS: aux_scheduler,
-            TrainingStage.ONLY_RD_LOSS: aux_scheduler,
-            TrainingStage.ROLLING: scheduler
+            TrainingStage.ME: None,
+            TrainingStage.RECONSTRUCTION: None,
+            TrainingStage.CONTEXTUAL_CODING: None,
+            TrainingStage.ROLLING: None,
         }
 
         return schedulers, aux_schedulers

@@ -360,7 +360,7 @@ class HyperAnalysisTransform(nn.Module):
             activation(inplace=True),
             nn.Conv2d(in_channels=channels[1], out_channels=channels[2], kernel_size=5, stride=2, padding=2),
             activation(inplace=True),
-            nn.Conv2d(in_channels=channels[2], out_channels=channels[3],kernel_size=5, stride=2, padding=2)
+            nn.Conv2d(in_channels=channels[2], out_channels=channels[3], kernel_size=5, stride=2, padding=2)
         ]
 
         for i, module in enumerate(transform):
