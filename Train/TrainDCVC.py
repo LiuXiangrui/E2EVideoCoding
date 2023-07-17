@@ -2,9 +2,13 @@ from enum import Enum, unique
 
 import torch
 from torch.optim import Adam
+from torch.optim.lr_scheduler import MultiStepLR
+from torch.utils.data.dataloader import DataLoader
+from torchvision.transforms import Compose, RandomVerticalFlip, RandomHorizontalFlip, RandomCrop
 
+from Model.Common.Dataset import Vimeo90KDataset
 from Model.Common.Trainer import TrainerABC
-from Model.Common.Utils import DecodedFrameBuffer, calculate_bpp, cal_psnr, separate_aux_and_normal_params
+from Model.Common.Utils import calculate_bpp, cal_psnr, separate_aux_and_normal_params, DecodedFrameBuffer
 from Model.DCVC import InterFrameCodecDCVC
 
 
@@ -14,7 +18,7 @@ class TrainingStage(Enum):
     ME = 0
     RECONSTRUCTION = 1
     CONTEXTUAL_CODING = 2
-    ALL = 3
+    ROLLING = 3
     NOT_AVAILABLE = 4
 
 
@@ -30,7 +34,7 @@ class TrainerDCVC(TrainerABC):
 
         decode_frame_buffer = DecodedFrameBuffer()
 
-        num_available_frames = 2  # note: no rolling training strategy in their paper
+        num_available_frames = 7 if stage == TrainingStage.ROLLING else 2
         frames = frames[:, :num_available_frames, :, :, :]
 
         # I frame coding
@@ -66,7 +70,7 @@ class TrainerDCVC(TrainerABC):
             motion_bpp = calculate_bpp(motion_likelihoods, num_pixels=num_pixels)
             frame_bpp = calculate_bpp(frame_likelihoods, num_pixels=num_pixels)
 
-            rate = motion_bpp * int(stage == TrainingStage.ME or stage == TrainingStage.ALL) + frame_bpp * int(stage == TrainingStage.CONTEXTUAL_CODING or stage == TrainingStage.ALL)
+            rate = motion_bpp * int(stage == TrainingStage.ME or stage == TrainingStage.ROLLING) + frame_bpp * int(stage == TrainingStage.CONTEXTUAL_CODING or stage == TrainingStage.ROLLING)
             distortion = align_dist if stage == TrainingStage.ME else recon_dist
 
             rd_cost = self.training_args.lambda_weight * distortion + rate
@@ -120,7 +124,8 @@ class TrainerDCVC(TrainerABC):
                                             img_tensor=enc_results["alignment"][i].clone().detach().cpu())
 
     def lr_decay(self, stage: TrainingStage) -> None:
-        pass  # no lr decay strategy
+        self.schedulers[stage].step()
+        self.aux_schedulers[stage].step()
 
     def infer_stage(self, epoch: int) -> TrainingStage:
         epoch_milestone = self.training_args.epoch_milestone
@@ -151,17 +156,58 @@ class TrainerDCVC(TrainerABC):
         aux_optimizers[TrainingStage.CONTEXTUAL_CODING] = aux_optimizers[TrainingStage.RECONSTRUCTION]
 
         params, aux_params = separate_aux_and_normal_params(self.inter_frame_codec)
-        optimizers[TrainingStage.ALL] = Adam([{'params': params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1])
-        aux_optimizers[TrainingStage.ALL] = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[1])
+        optimizers[TrainingStage.ROLLING] = Adam([{'params': params, 'initial_lr': lr_milestone[1]}], lr=lr_milestone[1])
+        aux_optimizers[TrainingStage.ROLLING] = Adam([{'params': aux_params, 'initial_lr': lr_milestone[0]}], lr=lr_milestone[1])
 
         return optimizers, aux_optimizers
 
     def init_schedulers(self, start_epoch: int) -> tuple[dict, dict]:
-        # not use lr decay
-        schedulers = {TrainingStage(i): None for i in range(len(TrainingStage))}
-        aux_schedulers = {TrainingStage(i): None for i in range(len(TrainingStage))}
+        lr_decay_milestone = self.training_args.lr_decay_milestone if isinstance(self.training_args.lr_decay_milestone, list) else [self.training_args.lr_decay_milestone, ]
+
+        scheduler = MultiStepLR(optimizer=self.optimizers[TrainingStage.WITH_INTER_LOSS], last_epoch=start_epoch - 1,
+                                milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
+        aux_scheduler = MultiStepLR(optimizer=self.aux_optimizers[TrainingStage.WITH_INTER_LOSS],
+                                    last_epoch=start_epoch - 1,
+                                    milestones=lr_decay_milestone, gamma=self.training_args.lr_decay_factor)
+
+        schedulers = {
+            TrainingStage.WITH_INTER_LOSS: scheduler,
+            TrainingStage.ONLY_RD_LOSS: scheduler,
+            TrainingStage.ROLLING: scheduler
+        }
+
+        aux_schedulers = {
+            TrainingStage.WITH_INTER_LOSS: aux_scheduler,
+            TrainingStage.ONLY_RD_LOSS: aux_scheduler,
+            TrainingStage.ROLLING: scheduler
+        }
 
         return schedulers, aux_schedulers
+
+    def init_dataloader(self) -> tuple:
+        train_dataloader_single = DataLoader(  # use single P frame
+            dataset=Vimeo90KDataset(
+                root=self.training_args.dataset_root, training_frames_list_path=self.training_args.split_filepath,
+                transform=Compose([RandomCrop(size=256),  RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)])),
+            batch_size=self.training_args.batch_size, shuffle=True, pin_memory=True, num_workers=self.training_args.num_workers)
+
+        train_dataloader_rolling = DataLoader(  # use multiple P frames
+            dataset=Vimeo90KDataset(
+                root=self.training_args.dataset_root, training_frames_list_path=self.training_args.split_filepath,
+                transform=Compose([RandomCrop(size=256),  RandomHorizontalFlip(p=0.5), RandomVerticalFlip(p=0.5)]),
+                use_all_frames=True),
+            batch_size=self.training_args.batch_size, shuffle=True, pin_memory=True, num_workers=self.training_args.num_workers)
+
+        train_dataloaders = {
+            TrainingStage.ME: train_dataloader_single,
+            TrainingStage.RECONSTRUCTION: train_dataloader_single,
+            TrainingStage.CONTEXTUAL_CODING: train_dataloader_single,
+            TrainingStage.ROLLING: train_dataloader_rolling
+        }
+
+        eval_dataloader = None
+
+        return train_dataloaders, eval_dataloader
 
 
 if __name__ == "__main__":
